@@ -449,192 +449,78 @@ function addRow(role){
 
 const SYSTEM_PROMPT = "Kamu adalah Tanya, asisten AI yang ramah dan ringkas. Jawab selalu dalam bahasa Indonesia kecuali diminta bahasa lain.";
 
-
 async function sendMessage(){
   const text = input.value.trim();
   if(!text) return;
-
-  const idToken = sessionStorage.getItem('id_token');
-
-  if(!idToken){
-    aiBubbleError('Silakan login dengan Google terlebih dahulu.');
-    return;
-  }
-
   input.value = '';
   input.style.height = 'auto';
   sendBtn.disabled = true;
 
   addRow('user').textContent = text;
-  history.push({
-    role: 'user',
-    content: text
-  });
+  history.push({ role: 'user', content: text });
 
   const aiBubble = addRow('ai');
-
-  aiBubble.innerHTML =
-    '<span class="typing-dots">' +
-      '<span></span>' +
-      '<span></span>' +
-      '<span></span>' +
-    '</span>';
+  aiBubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
 
   let fullText = '';
-  let started = false;
-
-  try {
-
-    const response = await fetch("/api/chat", {
+  try{
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${idToken}`
-      },
-
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        system: SYSTEM_PROMPT,
+        stream: true,
         messages: history
       })
     });
 
-    if(!response.ok){
-
-      let errorMessage =
-        'Maaf, terjadi kesalahan pada server.';
-
-      try {
-        const errorData = await response.json();
-
-        if(errorData?.error){
-          errorMessage = errorData.error;
-        }
-
-      } catch {}
-
-      aiBubble.textContent = errorMessage;
-      return;
-    }
-
-    if(!response.body){
-      aiBubble.textContent =
-        'Server tidak mengirimkan stream respons.';
+    if(!response.ok || !response.body){
+      aiBubble.textContent = 'Maaf, AI sedang tidak bisa dihubungi. Coba lagi sebentar lagi.';
       return;
     }
 
     const reader = response.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-
+    const decoder = new TextDecoder();
     let buffer = '';
+    let started = false;
 
     while(true){
-
-      const { done, value } =
-        await reader.read();
-
+      const { done, value } = await reader.read();
       if(done) break;
-
-      buffer += decoder.decode(value, {
-        stream: true
-      });
-
-      const parts =
-        buffer.split("\n\n");
-
-      buffer = parts.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop();
 
       for(const part of parts){
-
-        const lines =
-          part.split("\n");
-
-        const dataLine =
-          lines.find(line =>
-            line.startsWith("data:")
-          );
-
+        const lines = part.split('\n');
+        const dataLine = lines.find(l => l.startsWith('data:'));
         if(!dataLine) continue;
-
-        const data =
-          dataLine
-            .slice(5)
-            .trim();
-
-        if(!data) continue;
-
-        try {
-
-          const json =
-            JSON.parse(data);
-
-          if(
-            json.type ===
-            "content_block_delta" &&
-            json.delta &&
-            json.delta.text
-          ){
-
-            if(!started){
-
-              aiBubble.textContent = '';
-              started = true;
-
-            }
-
-            const stayPinned =
-              isNearBottom();
-
-            fullText +=
-              json.delta.text;
-
-            aiBubble.textContent =
-              fullText;
-
-            if(stayPinned){
-
-              messagesEl.scrollTop =
-                messagesEl.scrollHeight;
-
-            }
-
+        try{
+          const json = JSON.parse(dataLine.slice(5).trim());
+          if(json.type === 'content_block_delta' && json.delta && json.delta.text){
+            if(!started){ aiBubble.textContent = ''; started = true; }
+            const stayPinned = isNearBottom();
+            fullText += json.delta.text;
+            aiBubble.textContent = fullText;
+            if(stayPinned) messagesEl.scrollTop = messagesEl.scrollHeight;
           }
-
-        } catch(e) {
-          // Abaikan event SSE yang bukan JSON
-        }
+        }catch(e){ /* abaikan baris non-JSON */ }
       }
     }
 
     if(fullText){
-
-      history.push({
-        role: 'assistant',
-        content: fullText
-      });
-
+      history.push({ role: 'assistant', content: fullText });
     } else if(!started){
-
-      aiBubble.textContent =
-        'Tidak ada balasan dari AI.';
+      aiBubble.textContent = 'Tidak ada balasan diterima. Coba lagi.';
     }
-
-  } catch(error){
-
-    console.error(
-      'Chat error:',
-      error
-    );
-
-    aiBubble.textContent =
-      'Tidak dapat terhubung ke server AI.';
-
-  } finally {
-
+  }catch(e){
+    aiBubble.textContent = 'Tidak bisa terhubung ke AI. Periksa koneksi lalu coba lagi.';
+  }finally{
     sendBtn.disabled = false;
-
   }
 }
-
 
 sendBtn.addEventListener('click', sendMessage);
 input.addEventListener('keydown', (e) => {
