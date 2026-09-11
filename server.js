@@ -71,6 +71,15 @@ app.get("/api/health", (req, res) => {
 
 
 // =====================================================
+// ROOT ROUTE (biar "Cannot GET /" tidak muncul)
+// =====================================================
+
+app.get("/", (req, res) => {
+    res.sendFile("index.html", { root: "public" });
+});
+
+
+// =====================================================
 // CHAT API
 // =====================================================
 
@@ -356,26 +365,34 @@ app.post("/api/chat", async (req, res) => {
 
 
 // =====================================================
-// START SERVER
+// START SERVER (hanya jalan kalau dijalankan langsung / lokal)
+// Di Vercel, server tidak "listen" — Vercel yang memanggil
+// export default app sebagai serverless function.
 // =====================================================
 
-app.listen(PORT, () => {
+if (process.env.VERCEL !== "1") {
 
-    console.log("");
-    console.log("======================================");
-    console.log("       TANYA AI SERVER");
-    console.log("======================================");
-    console.log(`Server : http://localhost:${PORT}`);
-    console.log(
-        `Google : ${GOOGLE_CLIENT_ID ? "OK" : "BELUM DIISI"}`
-    );
-    console.log(
-        `Anthropic : ${ANTHROPIC_API_KEY ? "OK" : "BELUM DIISI"}`
-    );
-    console.log(
-        `Model : ${MODEL || "BELUM DIISI"}`
-    );
-    console.log("======================================");
-    console.log("");
+    app.listen(PORT, () => {
 
-});
+        console.log("");
+        console.log("======================================");
+        console.log("       TANYA AI SERVER");
+        console.log("======================================");
+        console.log(`Server : http://localhost:${PORT}`);
+        console.log(
+            `Google : ${GOOGLE_CLIENT_ID ? "OK" : "BELUM DIISI"}`
+        );
+        console.log(
+            `Anthropic : ${ANTHROPIC_API_KEY ? "OK" : "BELUM DIISI"}`
+        );
+        console.log(
+            `Model : ${MODEL || "BELUM DIISI"}`
+        );
+        console.log("======================================");
+        console.log("");
+
+    });
+
+}
+
+export default app;
