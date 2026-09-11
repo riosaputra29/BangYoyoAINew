@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -43,7 +42,6 @@
   button{transition:border-color .15s ease, background-color .15s ease, opacity .15s ease, transform .1s ease;}
   button:active:not(:disabled){transform:scale(0.97);}
 
-  /* Scrollbar tipis, senada dengan palet */
   #messages, .login-panel{scrollbar-width:thin; scrollbar-color:var(--border) transparent;}
   #messages::-webkit-scrollbar{width:8px;}
   #messages::-webkit-scrollbar-track{background:transparent;}
@@ -68,7 +66,6 @@
     .login-story > *, .login-card > *{animation:none;}
   }
 
-  /* ---------- Login (split layout) ---------- */
   #login-screen{
     flex:1; display:flex; min-height:0;
   }
@@ -108,7 +105,6 @@
   #demo-btn:hover{border-color:var(--accent); color:var(--text); border-style:solid;}
   .login-fineprint{color:var(--text-muted); font-size:0.76rem; line-height:1.6; border-top:1px solid var(--border); padding-top:16px;}
 
-  /* ---------- Chat screen ---------- */
   #chat-screen{
     display:none; flex:1; flex-direction:column; overflow:hidden; min-height:0; position:relative;
   }
@@ -228,7 +224,6 @@
   #send-btn:disabled{opacity:0.4; cursor:not-allowed;}
   #send-btn svg{width:14px; height:14px;}
 
-  /* ---------- Mobile ---------- */
   @media (max-width: 760px){
     .login-story{
       flex:none; padding:32px 24px; border-right:none; border-bottom:1px solid var(--border);
@@ -258,7 +253,6 @@
         <p>Gunakan akun Google — tanpa kata sandi baru, tanpa formulir.</p>
       </div>
       <div id="google-btn-container"></div>
-      <button id="demo-btn" type="button">Masuk cepat untuk uji coba (lewati Google)</button>
       <p id="login-error">Login belum bisa dimuat. Pastikan Client ID sudah diisi (lihat README.md).</p>
       <p class="login-fineprint">Dengan masuk, kamu menyetujui bahwa percakapanmu diproses untuk menghasilkan balasan. Tidak ada data yang dibagikan ke pihak ketiga di luar penyedia AI.</p>
     </div>
@@ -267,7 +261,7 @@
 
 <section id="chat-screen">
   <header>
-    <div class="brand"><span class="dot"></span>Tanya <span id="demo-tag">login instan</span></div>
+    <div class="brand"><span class="dot"></span>Tanya</div>
     <div id="user-menu">
       <div id="user-chip">
         <img id="user-avatar" src="" alt="">
@@ -305,22 +299,13 @@
 <script>
 // ==== KONFIGURASI ====
 const GOOGLE_CLIENT_ID = "475879074184-5fu3p4oci9o3rbl8khtnv2260k6k7bc2.apps.googleusercontent.com";
-// Chat di halaman ini terhubung langsung ke AI sungguhan (bukan balasan tiruan).
-// Login tetap bisa dilewati sementara lewat tombol "Masuk cepat" di bawah.
+// Chat di halaman ini memanggil backend sendiri (/api/chat), BUKAN Anthropic langsung.
+// Backend yang menyimpan API key dengan aman dan meneruskan permintaan ke Anthropic.
 
 const DUMMY_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%232c2f38'/%3E%3Ccircle cx='32' cy='25' r='12' fill='%238f929e'/%3E%3Cellipse cx='32' cy='58' rx='20' ry='16' fill='%238f929e'/%3E%3C/svg%3E";
 
 let history = [];
 let userProfile = null;
-
-document.getElementById('demo-btn').addEventListener('click', () => {
-  userProfile = { name: 'Ken Ardian', picture: DUMMY_AVATAR, email: 'ken.ardian@contoh.com' };
-  document.getElementById('user-avatar').src = userProfile.picture;
-  document.getElementById('user-name').textContent = userProfile.name;
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('chat-screen').style.display = 'flex';
-  document.getElementById('chat-input').focus();
-});
 
 function decodeJwt(token){
   const payload = token.split('.')[1];
@@ -347,6 +332,16 @@ window.onload = function(){
       document.getElementById('google-btn-container'),
       { theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', width: 320 }
     );
+
+    // Kalau sesi login sebelumnya masih tersimpan di tab ini, langsung masuk chat
+    const savedToken = sessionStorage.getItem('id_token');
+    if(savedToken){
+      userProfile = decodeJwt(savedToken);
+      document.getElementById('user-avatar').src = userProfile.picture;
+      document.getElementById('user-name').textContent = userProfile.name;
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('chat-screen').style.display = 'flex';
+    }
   }catch(e){
     document.getElementById('login-error').style.display = 'block';
   }
@@ -448,11 +443,18 @@ function addRow(role){
   return bubble;
 }
 
-const SYSTEM_PROMPT = "Kamu adalah Tanya, asisten AI yang ramah dan ringkas. Jawab selalu dalam bahasa Indonesia kecuali diminta bahasa lain.";
-
 async function sendMessage(){
   const text = input.value.trim();
   if(!text) return;
+
+  const idToken = sessionStorage.getItem('id_token');
+  if(!idToken){
+    alert('Sesi login sudah habis. Silakan login ulang dengan Google.');
+    document.getElementById('chat-screen').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+    return;
+  }
+
   input.value = '';
   input.style.height = 'auto';
   sendBtn.disabled = true;
@@ -465,17 +467,24 @@ async function sendMessage(){
 
   let fullText = '';
   try{
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    // Panggil BACKEND SENDIRI (/api/chat), bukan Anthropic langsung.
+    // Backend yang menyimpan API key dan meneruskan request setelah verifikasi login Google.
+    const response = await fetch("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + idToken
+      },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1000,
-        system: SYSTEM_PROMPT,
-        stream: true,
         messages: history
       })
     });
+
+    if(response.status === 401){
+      aiBubble.textContent = 'Sesi login sudah habis. Silakan login ulang.';
+      sessionStorage.removeItem('id_token');
+      return;
+    }
 
     if(!response.ok || !response.body){
       aiBubble.textContent = 'Maaf, AI sedang tidak bisa dihubungi. Coba lagi sebentar lagi.';
