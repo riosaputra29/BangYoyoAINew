@@ -1,13 +1,19 @@
 import express from "express";
 import { OAuth2Client } from "google-auth-library";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PUBLIC_DIR = path.join(__dirname, "public");
 
 const app = express();
 
 app.use(express.json());
-app.use(express.static("public"));
+app.use(express.static(PUBLIC_DIR));
 
 const PORT = process.env.PORT || 3000;
 
@@ -75,7 +81,7 @@ app.get("/api/health", (req, res) => {
 // =====================================================
 
 app.get("/", (req, res) => {
-    res.sendFile("index.html", { root: "public" });
+    res.sendFile(path.join(PUBLIC_DIR, "index.html"));
 });
 
 
