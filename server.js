@@ -18,19 +18,19 @@ app.use(express.static(PUBLIC_DIR));
 const PORT = process.env.PORT || 3000;
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = process.env.ANTHROPIC_MODEL;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 if (!GOOGLE_CLIENT_ID) {
     console.error("❌ GOOGLE_CLIENT_ID belum diisi di .env");
 }
 
-if (!ANTHROPIC_API_KEY) {
-    console.error("❌ ANTHROPIC_API_KEY belum diisi di .env");
+if (!GEMINI_API_KEY) {
+    console.error("❌ GEMINI_API_KEY belum diisi di .env");
 }
 
 if (!MODEL) {
-    console.error("❌ ANTHROPIC_MODEL belum diisi di .env");
+    console.error("❌ GEMINI_MODEL belum diisi di .env");
 }
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
@@ -69,7 +69,7 @@ app.get("/api/health", (req, res) => {
     res.json({
         ok: true,
         google_configured: !!GOOGLE_CLIENT_ID,
-        anthropic_configured: !!ANTHROPIC_API_KEY,
+        gemini_configured: !!GEMINI_API_KEY,
         model: MODEL || null
     });
 
@@ -202,36 +202,58 @@ app.post("/api/chat", async (req, res) => {
 
 
     // -------------------------------------------------
-    // 5. PANGGIL ANTHROPIC
+    // 5. KONVERSI KE FORMAT GEMINI
+    // -------------------------------------------------
+    // Gemini pakai "contents" bukan "messages", role
+    // "assistant" harus jadi "model", dan tiap pesan
+    // berisi array "parts" bukan string "content".
+
+    const geminiContents = cleanMessages.map((message) => {
+
+        return {
+            role: message.role === "assistant" ? "model" : "user",
+            parts: [{ text: message.content }]
+        };
+
+    });
+
+
+    // -------------------------------------------------
+    // 6. PANGGIL GEMINI
     // -------------------------------------------------
 
     let upstream;
 
     try {
 
+        const url =
+            `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:streamGenerateContent` +
+            `?alt=sse&key=${GEMINI_API_KEY}`;
+
         upstream = await fetch(
-            "https://api.anthropic.com/v1/messages",
+            url,
             {
                 method: "POST",
 
                 headers: {
-                    "Content-Type": "application/json",
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01"
+                    "Content-Type": "application/json"
                 },
 
                 body: JSON.stringify({
 
-                    model: MODEL,
+                    contents: geminiContents,
 
-                    max_tokens: 2000,
+                    systemInstruction: {
+                        role: "system",
+                        parts: [{
+                            text:
+                                "Kamu adalah Tanya, asisten AI yang ramah, profesional, membantu, dan menjawab dalam bahasa Indonesia kecuali pengguna meminta bahasa lain."
+                        }]
+                    },
 
-                    stream: true,
-
-                    system:
-                        "Kamu adalah Tanya, asisten AI yang ramah, profesional, membantu, dan menjawab dalam bahasa Indonesia kecuali pengguna meminta bahasa lain.",
-
-                    messages: cleanMessages
+                    generationConfig: {
+                        maxOutputTokens: 2000
+                    }
 
                 })
             }
@@ -240,7 +262,7 @@ app.post("/api/chat", async (req, res) => {
     } catch (error) {
 
         console.error(
-            "Anthropic connection error:",
+            "Gemini connection error:",
             error
         );
 
@@ -252,7 +274,7 @@ app.post("/api/chat", async (req, res) => {
 
 
     // -------------------------------------------------
-    // 6. CEK RESPONSE ANTHROPIC
+    // 7. CEK RESPONSE GEMINI
     // -------------------------------------------------
 
     if (!upstream.ok || !upstream.body) {
@@ -260,7 +282,7 @@ app.post("/api/chat", async (req, res) => {
         const errorText = await upstream.text();
 
         console.error(
-            "Anthropic API Error:",
+            "Gemini API Error:",
             upstream.status,
             errorText
         );
@@ -291,7 +313,7 @@ app.post("/api/chat", async (req, res) => {
 
 
     // -------------------------------------------------
-    // 7. SSE RESPONSE
+    // 8. SSE RESPONSE KE BROWSER
     // -------------------------------------------------
 
     res.status(200);
@@ -322,8 +344,15 @@ app.post("/api/chat", async (req, res) => {
 
 
     // -------------------------------------------------
-    // 8. STREAM ANTHROPIC → BROWSER
+    // 9. STREAM GEMINI → BROWSER
     // -------------------------------------------------
+    // Catatan: chunk mentah dari Gemini diteruskan apa
+    // adanya (format SSE bawaan Gemini, bukan format
+    // Anthropic). Kalau frontend kamu mem-parsing event
+    // Anthropic (event: content_block_delta, dst), bagian
+    // parsing di sisi client PERLU disesuaikan juga,
+    // karena struktur JSON Gemini berbeda:
+    // { candidates: [{ content: { parts: [{ text }] } }] }
 
     const reader =
         upstream.body.getReader();
@@ -382,14 +411,14 @@ if (process.env.VERCEL !== "1") {
 
         console.log("");
         console.log("======================================");
-        console.log("       TANYA AI SERVER");
+        console.log("       TANYA AI SERVER (Gemini)");
         console.log("======================================");
         console.log(`Server : http://localhost:${PORT}`);
         console.log(
-            `Google : ${GOOGLE_CLIENT_ID ? "OK" : "BELUM DIISI"}`
+            `Google Login : ${GOOGLE_CLIENT_ID ? "OK" : "BELUM DIISI"}`
         );
         console.log(
-            `Anthropic : ${ANTHROPIC_API_KEY ? "OK" : "BELUM DIISI"}`
+            `Gemini API : ${GEMINI_API_KEY ? "OK" : "BELUM DIISI"}`
         );
         console.log(
             `Model : ${MODEL || "BELUM DIISI"}`
