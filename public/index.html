@@ -299,8 +299,8 @@
 <script>
 // ==== KONFIGURASI ====
 const GOOGLE_CLIENT_ID = "475879074184-5fu3p4oci9o3rbl8khtnv2260k6k7bc2.apps.googleusercontent.com";
-// Chat di halaman ini memanggil backend sendiri (/api/chat), BUKAN Gemini langsung.
-// Backend yang menyimpan API key dengan aman dan meneruskan permintaan ke Gemini.
+// Chat di halaman ini memanggil backend sendiri (/api/chat), BUKAN Groq langsung.
+// Backend yang menyimpan API key dengan aman dan meneruskan permintaan ke Groq.
 
 const DUMMY_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%232c2f38'/%3E%3Ccircle cx='32' cy='25' r='12' fill='%238f929e'/%3E%3Cellipse cx='32' cy='58' rx='20' ry='16' fill='%238f929e'/%3E%3C/svg%3E";
 
@@ -467,7 +467,7 @@ async function sendMessage(){
 
   let fullText = '';
   try{
-    // Panggil BACKEND SENDIRI (/api/chat), bukan Gemini langsung.
+    // Panggil BACKEND SENDIRI (/api/chat), bukan Groq langsung.
     // Backend yang menyimpan API key dan meneruskan request setelah verifikasi login Google.
     const response = await fetch("/api/chat", {
       method: "POST",
@@ -514,38 +514,27 @@ async function sendMessage(){
         try{
           const json = JSON.parse(raw);
 
-          // ==== FORMAT GEMINI INTERACTIONS API (SSE) ====
-          // Event yang berisi teks jawaban berbentuk:
-          // { "event_type": "step.delta", "delta": { "type": "text", "text": "..." } }
-          // Event lain (interaction.created, step.start, thought_summary,
-          // interaction.completed, dll) sengaja diabaikan di sini.
-          if(json.event_type === 'step.delta' && json.delta && json.delta.type === 'text'){
-            const chunkText = json.delta.text || '';
-            if(chunkText){
-              if(!started){ aiBubble.textContent = ''; started = true; }
-              const stayPinned = isNearBottom();
-              fullText += chunkText;
-              aiBubble.textContent = fullText;
-              if(stayPinned) messagesEl.scrollTop = messagesEl.scrollHeight;
-            }
+          // ==== FORMAT GROQ (OpenAI-compatible SSE) ====
+          // Tiap event berbentuk:
+          // { "choices": [ { "delta": { "content": "..." }, "finish_reason": null } ] }
+          // Event terakhir biasanya delta kosong dengan finish_reason: "stop"
+          const choice = json.choices && json.choices[0];
+          const chunkText = choice && choice.delta && choice.delta.content;
+
+          if(chunkText){
+            if(!started){ aiBubble.textContent = ''; started = true; }
+            const stayPinned = isNearBottom();
+            fullText += chunkText;
+            aiBubble.textContent = fullText;
+            if(stayPinned) messagesEl.scrollTop = messagesEl.scrollHeight;
           }
 
-          // Kalau ada error dari Interactions API (mis. safety block, timeout)
-          if(json.event_type === 'error' && json.error){
-            if(!started){
-              aiBubble.textContent = 'Terjadi kesalahan: ' + (json.error.message || json.error.code || 'tidak diketahui') + '.';
-              started = true;
-            }
-          }
-
-          // Kalau interaction selesai tapi statusnya bukan 'completed'
-          // (misal 'incomplete' karena kehabisan token, atau 'failed')
-          if(json.event_type === 'interaction.completed' && json.interaction){
-            const status = json.interaction.status;
-            if(!started && status && status !== 'completed'){
-              aiBubble.textContent = 'Respons tidak selesai (status: ' + status + ').';
-              started = true;
-            }
+          // Kalau Groq menghentikan respons karena alasan selain selesai normal
+          // (mis. kena batas token, atau diblokir filter konten)
+          const finishReason = choice && choice.finish_reason;
+          if(finishReason && finishReason !== 'stop' && !chunkText && !started){
+            aiBubble.textContent = 'Respons berhenti (alasan: ' + finishReason + ').';
+            started = true;
           }
         }catch(e){ /* abaikan baris non-JSON */ }
       }
