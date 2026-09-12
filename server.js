@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3000;
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
 if (!GOOGLE_CLIENT_ID) {
     console.error("❌ GOOGLE_CLIENT_ID belum diisi di .env");
