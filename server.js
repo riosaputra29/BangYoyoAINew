@@ -202,24 +202,26 @@ app.post("/api/chat", async (req, res) => {
 
 
     // -------------------------------------------------
-    // 5. KONVERSI KE FORMAT GEMINI
+    // 5. KONVERSI KE FORMAT INTERACTIONS API
     // -------------------------------------------------
-    // Gemini pakai "contents" bukan "messages", role
-    // "assistant" harus jadi "model", dan tiap pesan
-    // berisi array "parts" bukan string "content".
+    // Interactions API (API Gemini generasi baru) tidak
+    // pakai "contents"/"messages" seperti generateContent.
+    // Riwayat percakapan dikirim sebagai array "Step":
+    // - pesan user   -> { type: "user_input", content: [...] }
+    // - balasan AI   -> { type: "model_output", content: [...] }
 
-    const geminiContents = cleanMessages.map((message) => {
+    const interactionInput = cleanMessages.map((message) => {
 
         return {
-            role: message.role === "assistant" ? "model" : "user",
-            parts: [{ text: message.content }]
+            type: message.role === "assistant" ? "model_output" : "user_input",
+            content: [{ type: "text", text: message.content }]
         };
 
     });
 
 
     // -------------------------------------------------
-    // 6. PANGGIL GEMINI
+    // 6. PANGGIL GEMINI (INTERACTIONS API)
     // -------------------------------------------------
 
     let upstream;
@@ -227,8 +229,7 @@ app.post("/api/chat", async (req, res) => {
     try {
 
         const url =
-            `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:streamGenerateContent` +
-            `?alt=sse&key=${GEMINI_API_KEY}`;
+            "https://generativelanguage.googleapis.com/v1beta/interactions";
 
         upstream = await fetch(
             url,
@@ -236,23 +237,23 @@ app.post("/api/chat", async (req, res) => {
                 method: "POST",
 
                 headers: {
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": GEMINI_API_KEY
                 },
 
                 body: JSON.stringify({
 
-                    contents: geminiContents,
+                    model: MODEL,
 
-                    systemInstruction: {
-                        role: "system",
-                        parts: [{
-                            text:
-                                "Kamu adalah Tanya, asisten AI yang ramah, profesional, membantu, dan menjawab dalam bahasa Indonesia kecuali pengguna meminta bahasa lain."
-                        }]
-                    },
+                    input: interactionInput,
 
-                    generationConfig: {
-                        maxOutputTokens: 2000
+                    system_instruction:
+                        "Kamu adalah Tanya, asisten AI yang ramah, profesional, membantu, dan menjawab dalam bahasa Indonesia kecuali pengguna meminta bahasa lain.",
+
+                    stream: true,
+
+                    generation_config: {
+                        max_output_tokens: 2000
                     }
 
                 })
@@ -282,7 +283,7 @@ app.post("/api/chat", async (req, res) => {
         const errorText = await upstream.text();
 
         console.error(
-            "Gemini API Error:",
+            "Gemini Interactions API Error:",
             upstream.status,
             errorText
         );
@@ -346,13 +347,15 @@ app.post("/api/chat", async (req, res) => {
     // -------------------------------------------------
     // 9. STREAM GEMINI → BROWSER
     // -------------------------------------------------
-    // Catatan: chunk mentah dari Gemini diteruskan apa
-    // adanya (format SSE bawaan Gemini, bukan format
-    // Anthropic). Kalau frontend kamu mem-parsing event
-    // Anthropic (event: content_block_delta, dst), bagian
-    // parsing di sisi client PERLU disesuaikan juga,
-    // karena struktur JSON Gemini berbeda:
-    // { candidates: [{ content: { parts: [{ text }] } }] }
+    // Catatan: chunk mentah dari Interactions API
+    // diteruskan apa adanya. Formatnya berbeda dari
+    // generateContent lama maupun dari Anthropic.
+    // Tiap event SSE berbentuk:
+    //   event: step.delta
+    //   data: {"event_type":"step.delta","delta":{"type":"text","text":"..."}}
+    // Teks jawaban akhir ada di event step.delta dengan
+    // delta.type === "text". Event lain (thought_summary,
+    // interaction.created, dll) diabaikan di sisi client.
 
     const reader =
         upstream.body.getReader();
