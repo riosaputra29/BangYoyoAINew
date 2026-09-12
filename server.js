@@ -18,19 +18,19 @@ app.use(express.static(PUBLIC_DIR));
 const PORT = process.env.PORT || 3000;
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
 if (!GOOGLE_CLIENT_ID) {
     console.error("❌ GOOGLE_CLIENT_ID belum diisi di .env");
 }
 
-if (!GEMINI_API_KEY) {
-    console.error("❌ GEMINI_API_KEY belum diisi di .env");
+if (!GROQ_API_KEY) {
+    console.error("❌ GROQ_API_KEY belum diisi di .env");
 }
 
 if (!MODEL) {
-    console.error("❌ GEMINI_MODEL belum diisi di .env");
+    console.error("❌ GROQ_MODEL belum diisi di .env");
 }
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
@@ -69,7 +69,7 @@ app.get("/api/health", (req, res) => {
     res.json({
         ok: true,
         google_configured: !!GOOGLE_CLIENT_ID,
-        gemini_configured: !!GEMINI_API_KEY,
+        groq_configured: !!GROQ_API_KEY,
         model: MODEL || null
     });
 
@@ -202,26 +202,31 @@ app.post("/api/chat", async (req, res) => {
 
 
     // -------------------------------------------------
-    // 5. KONVERSI KE FORMAT INTERACTIONS API
+    // 5. KONVERSI KE FORMAT GROQ (OpenAI-compatible)
     // -------------------------------------------------
-    // Interactions API (API Gemini generasi baru) tidak
-    // pakai "contents"/"messages" seperti generateContent.
-    // Riwayat percakapan dikirim sebagai array "Step":
-    // - pesan user   -> { type: "user_input", content: [...] }
-    // - balasan AI   -> { type: "model_output", content: [...] }
+    // Groq pakai format "messages" persis seperti OpenAI:
+    // { role: "system" | "user" | "assistant", content: "..." }
+    // Jauh lebih simpel dibanding Gemini/Anthropic — tidak
+    // perlu konversi struktur, cukup tambahkan system prompt
+    // di elemen pertama array messages.
 
-    const interactionInput = cleanMessages.map((message) => {
-
-        return {
-            type: message.role === "assistant" ? "model_output" : "user_input",
-            content: [{ type: "text", text: message.content }]
-        };
-
-    });
+    const groqMessages = [
+        {
+            role: "system",
+            content:
+                "Kamu adalah Tanya, asisten AI yang ramah, profesional, membantu, dan menjawab dalam bahasa Indonesia kecuali pengguna meminta bahasa lain."
+        },
+        ...cleanMessages.map((message) => {
+            return {
+                role: message.role, // "user" atau "assistant", sudah cocok, tidak perlu diubah
+                content: message.content
+            };
+        })
+    ];
 
 
     // -------------------------------------------------
-    // 6. PANGGIL GEMINI (INTERACTIONS API)
+    // 6. PANGGIL GROQ
     // -------------------------------------------------
 
     let upstream;
@@ -229,7 +234,7 @@ app.post("/api/chat", async (req, res) => {
     try {
 
         const url =
-            "https://generativelanguage.googleapis.com/v1beta/interactions";
+            "https://api.groq.com/openai/v1/chat/completions";
 
         upstream = await fetch(
             url,
@@ -238,23 +243,18 @@ app.post("/api/chat", async (req, res) => {
 
                 headers: {
                     "Content-Type": "application/json",
-                    "x-goog-api-key": GEMINI_API_KEY
+                    "Authorization": "Bearer " + GROQ_API_KEY
                 },
 
                 body: JSON.stringify({
 
                     model: MODEL,
 
-                    input: interactionInput,
-
-                    system_instruction:
-                        "Kamu adalah Tanya, asisten AI yang ramah, profesional, membantu, dan menjawab dalam bahasa Indonesia kecuali pengguna meminta bahasa lain.",
+                    messages: groqMessages,
 
                     stream: true,
 
-                    generation_config: {
-                        max_output_tokens: 2000
-                    }
+                    max_tokens: 2000
 
                 })
             }
@@ -263,7 +263,7 @@ app.post("/api/chat", async (req, res) => {
     } catch (error) {
 
         console.error(
-            "Gemini connection error:",
+            "Groq connection error:",
             error
         );
 
@@ -275,7 +275,7 @@ app.post("/api/chat", async (req, res) => {
 
 
     // -------------------------------------------------
-    // 7. CEK RESPONSE GEMINI
+    // 7. CEK RESPONSE GROQ
     // -------------------------------------------------
 
     if (!upstream.ok || !upstream.body) {
@@ -283,7 +283,7 @@ app.post("/api/chat", async (req, res) => {
         const errorText = await upstream.text();
 
         console.error(
-            "Gemini Interactions API Error:",
+            "Groq API Error:",
             upstream.status,
             errorText
         );
@@ -345,17 +345,14 @@ app.post("/api/chat", async (req, res) => {
 
 
     // -------------------------------------------------
-    // 9. STREAM GEMINI → BROWSER
+    // 9. STREAM GROQ → BROWSER
     // -------------------------------------------------
-    // Catatan: chunk mentah dari Interactions API
-    // diteruskan apa adanya. Formatnya berbeda dari
-    // generateContent lama maupun dari Anthropic.
-    // Tiap event SSE berbentuk:
-    //   event: step.delta
-    //   data: {"event_type":"step.delta","delta":{"type":"text","text":"..."}}
-    // Teks jawaban akhir ada di event step.delta dengan
-    // delta.type === "text". Event lain (thought_summary,
-    // interaction.created, dll) diabaikan di sisi client.
+    // Groq pakai format SSE ala OpenAI, jauh lebih simpel:
+    //   data: {"choices":[{"delta":{"content":"..."}}]}
+    //   data: [DONE]
+    // Teks jawaban ada di choices[0].delta.content.
+    // Chunk mentah diteruskan apa adanya ke browser, parsing
+    // akhirnya dilakukan di index.html.
 
     const reader =
         upstream.body.getReader();
@@ -414,14 +411,14 @@ if (process.env.VERCEL !== "1") {
 
         console.log("");
         console.log("======================================");
-        console.log("       TANYA AI SERVER (Gemini)");
+        console.log("       TANYA AI SERVER (Groq)");
         console.log("======================================");
         console.log(`Server : http://localhost:${PORT}`);
         console.log(
             `Google Login : ${GOOGLE_CLIENT_ID ? "OK" : "BELUM DIISI"}`
         );
         console.log(
-            `Gemini API : ${GEMINI_API_KEY ? "OK" : "BELUM DIISI"}`
+            `Groq API : ${GROQ_API_KEY ? "OK" : "BELUM DIISI"}`
         );
         console.log(
             `Model : ${MODEL || "BELUM DIISI"}`
