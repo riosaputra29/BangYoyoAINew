@@ -299,8 +299,8 @@
 <script>
 // ==== KONFIGURASI ====
 const GOOGLE_CLIENT_ID = "475879074184-5fu3p4oci9o3rbl8khtnv2260k6k7bc2.apps.googleusercontent.com";
-// Chat di halaman ini memanggil backend sendiri (/api/chat), BUKAN Anthropic langsung.
-// Backend yang menyimpan API key dengan aman dan meneruskan permintaan ke Anthropic.
+// Chat di halaman ini memanggil backend sendiri (/api/chat), BUKAN Gemini langsung.
+// Backend yang menyimpan API key dengan aman dan meneruskan permintaan ke Gemini.
 
 const DUMMY_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%232c2f38'/%3E%3Ccircle cx='32' cy='25' r='12' fill='%238f929e'/%3E%3Cellipse cx='32' cy='58' rx='20' ry='16' fill='%238f929e'/%3E%3C/svg%3E";
 
@@ -467,7 +467,7 @@ async function sendMessage(){
 
   let fullText = '';
   try{
-    // Panggil BACKEND SENDIRI (/api/chat), bukan Anthropic langsung.
+    // Panggil BACKEND SENDIRI (/api/chat), bukan Gemini langsung.
     // Backend yang menyimpan API key dan meneruskan request setelah verifikasi login Google.
     const response = await fetch("/api/chat", {
       method: "POST",
@@ -507,14 +507,35 @@ async function sendMessage(){
         const lines = part.split('\n');
         const dataLine = lines.find(l => l.startsWith('data:'));
         if(!dataLine) continue;
+
+        const raw = dataLine.slice(5).trim();
+        if(!raw || raw === '[DONE]') continue;
+
         try{
-          const json = JSON.parse(dataLine.slice(5).trim());
-          if(json.type === 'content_block_delta' && json.delta && json.delta.text){
+          const json = JSON.parse(raw);
+
+          // ==== FORMAT GEMINI (streamGenerateContent + alt=sse) ====
+          // Tiap event berbentuk:
+          // { "candidates": [ { "content": { "parts": [ { "text": "..." } ] } } ] }
+          const candidate = json.candidates && json.candidates[0];
+          const parts2 = candidate && candidate.content && candidate.content.parts;
+          const chunkText = parts2 && parts2.map(p => p.text || '').join('');
+
+          if(chunkText){
             if(!started){ aiBubble.textContent = ''; started = true; }
             const stayPinned = isNearBottom();
-            fullText += json.delta.text;
+            fullText += chunkText;
             aiBubble.textContent = fullText;
             if(stayPinned) messagesEl.scrollTop = messagesEl.scrollHeight;
+          }
+
+          // Kalau Gemini memblokir respons (safety filter dll), beri tahu pengguna
+          const finishReason = candidate && candidate.finishReason;
+          if(finishReason && finishReason !== 'STOP' && !chunkText){
+            if(!started){
+              aiBubble.textContent = 'Respons diblokir oleh filter keamanan (' + finishReason + ').';
+              started = true;
+            }
           }
         }catch(e){ /* abaikan baris non-JSON */ }
       }
