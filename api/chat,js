@@ -1,1 +1,129 @@
 
+import { OAuth2Client } from "google-auth-library";
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+async function verifyGoogleToken(idToken) {
+  const ticket = await googleClient.verifyIdToken({
+    idToken,
+    audience: GOOGLE_CLIENT_ID,
+  });
+  const payload = ticket.getPayload();
+  if (!payload) throw new Error("Payload Google tidak ditemukan.");
+  return payload;
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+
+  // 1. Cek header Authorization
+  const authHeader = req.headers.authorization || "";
+  if (!authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Belum login dengan Google." });
+    return;
+  }
+  const idToken = authHeader.substring(7).trim();
+
+  // 2. Verifikasi token Google
+  try {
+    const googleUser = await verifyGoogleToken(idToken);
+    console.log(`Google login: ${googleUser.email || "unknown"}`);
+  } catch (err) {
+    console.error("Google verification error:", err.message);
+    res.status(401).json({ error: "Sesi Google tidak valid atau sudah kedaluwarsa." });
+    return;
+  }
+
+  // 3. Validasi & bersihkan messages
+  const { messages } = req.body || {};
+  if (!Array.isArray(messages) || messages.length === 0) {
+    res.status(400).json({ error: "Pesan kosong atau format salah." });
+    return;
+  }
+  const cleanMessages = messages
+    .filter(
+      (m) =>
+        m &&
+        ["user", "assistant"].includes(m.role) &&
+        typeof m.content === "string" &&
+        m.content.trim() !== ""
+    )
+    .map((m) => ({ role: m.role, content: m.content.trim() }));
+
+  if (cleanMessages.length === 0) {
+    res.status(400).json({ error: "Tidak ada pesan yang valid." });
+    return;
+  }
+
+  const groqMessages = [
+    {
+      role: "system",
+      content:
+        "Kamu adalah Tanya, asisten AI yang ramah, profesional, membantu, dan menjawab dalam bahasa Indonesia kecuali pengguna meminta bahasa lain.",
+    },
+    ...cleanMessages,
+  ];
+
+  // 4. Panggil Groq (streaming)
+  let upstream;
+  try {
+    upstream = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + GROQ_API_KEY,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: groqMessages,
+        stream: true,
+        max_tokens: 2000,
+      }),
+    });
+  } catch (err) {
+    console.error("Groq connection error:", err);
+    res.status(502).json({ error: "Tidak dapat menghubungi layanan AI." });
+    return;
+  }
+
+  if (!upstream.ok || !upstream.body) {
+    const errorText = await upstream.text().catch(() => "");
+    console.error("Groq API Error:", upstream.status, errorText);
+    let message = "Gagal mendapatkan respons dari AI.";
+    try {
+      message = JSON.parse(errorText)?.error?.message || message;
+    } catch {}
+    res.status(upstream.status).json({ error: message });
+    return;
+  }
+
+  // 5. Stream balik ke browser
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  if (res.flushHeaders) res.flushHeaders();
+
+  const reader = upstream.body.getReader();
+  req.on("close", () => reader.cancel().catch(() => {}));
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+    }
+  } catch (err) {
+    console.error("Streaming error:", err);
+  } finally {
+    res.end();
+  }
+}
