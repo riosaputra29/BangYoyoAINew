@@ -514,26 +514,36 @@ async function sendMessage(){
         try{
           const json = JSON.parse(raw);
 
-          // ==== FORMAT GEMINI (streamGenerateContent + alt=sse) ====
-          // Tiap event berbentuk:
-          // { "candidates": [ { "content": { "parts": [ { "text": "..." } ] } } ] }
-          const candidate = json.candidates && json.candidates[0];
-          const parts2 = candidate && candidate.content && candidate.content.parts;
-          const chunkText = parts2 && parts2.map(p => p.text || '').join('');
-
-          if(chunkText){
-            if(!started){ aiBubble.textContent = ''; started = true; }
-            const stayPinned = isNearBottom();
-            fullText += chunkText;
-            aiBubble.textContent = fullText;
-            if(stayPinned) messagesEl.scrollTop = messagesEl.scrollHeight;
+          // ==== FORMAT GEMINI INTERACTIONS API (SSE) ====
+          // Event yang berisi teks jawaban berbentuk:
+          // { "event_type": "step.delta", "delta": { "type": "text", "text": "..." } }
+          // Event lain (interaction.created, step.start, thought_summary,
+          // interaction.completed, dll) sengaja diabaikan di sini.
+          if(json.event_type === 'step.delta' && json.delta && json.delta.type === 'text'){
+            const chunkText = json.delta.text || '';
+            if(chunkText){
+              if(!started){ aiBubble.textContent = ''; started = true; }
+              const stayPinned = isNearBottom();
+              fullText += chunkText;
+              aiBubble.textContent = fullText;
+              if(stayPinned) messagesEl.scrollTop = messagesEl.scrollHeight;
+            }
           }
 
-          // Kalau Gemini memblokir respons (safety filter dll), beri tahu pengguna
-          const finishReason = candidate && candidate.finishReason;
-          if(finishReason && finishReason !== 'STOP' && !chunkText){
+          // Kalau ada error dari Interactions API (mis. safety block, timeout)
+          if(json.event_type === 'error' && json.error){
             if(!started){
-              aiBubble.textContent = 'Respons diblokir oleh filter keamanan (' + finishReason + ').';
+              aiBubble.textContent = 'Terjadi kesalahan: ' + (json.error.message || json.error.code || 'tidak diketahui') + '.';
+              started = true;
+            }
+          }
+
+          // Kalau interaction selesai tapi statusnya bukan 'completed'
+          // (misal 'incomplete' karena kehabisan token, atau 'failed')
+          if(json.event_type === 'interaction.completed' && json.interaction){
+            const status = json.interaction.status;
+            if(!started && status && status !== 'completed'){
+              aiBubble.textContent = 'Respons tidak selesai (status: ' + status + ').';
               started = true;
             }
           }
