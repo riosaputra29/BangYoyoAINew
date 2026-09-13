@@ -429,6 +429,7 @@ const TEXTLIKE_EXT = ['.txt', '.md', '.csv', '.json', '.log'];
 let history = [];
 let userProfile = null;
 let pendingAttachment = null; // [UPLOAD] { kind:'image'|'text', name, size, dataUrl?, text? }
+let historyLoaded = false; // [MEMORY] biar riwayat cuma di-fetch sekali per sesi login
 
 function decodeJwt(token){
   const payload = token.split('.')[1];
@@ -456,6 +457,7 @@ function handleCredentialResponse(response){
   userProfile = decodeJwt(response.credential);
   localStorage.setItem('id_token', response.credential); // [AUTO-LOGIN] localStorage, bukan sessionStorage
   showChatScreen();
+  loadChatHistory(); // [MEMORY]
   document.getElementById('chat-input').focus();
 }
 
@@ -476,6 +478,7 @@ window.onload = function(){
     if(savedToken && !isTokenExpired(savedToken)){
       userProfile = decodeJwt(savedToken);
       showChatScreen();
+      loadChatHistory(); // [MEMORY]
     } else {
       // [AUTO-LOGIN] Token tidak ada / sudah expired. Coba silent re-auth dulu
       // (Google One Tap) sebelum menampilkan layar login manual.
@@ -493,6 +496,7 @@ document.getElementById('signout-btn').addEventListener('click', () => {
   document.getElementById('chat-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   history = [];
+  historyLoaded = false; // [MEMORY] reset supaya akun lain tidak kebawa riwayat akun sebelumnya
   clearAttachment(); // [UPLOAD]
   document.getElementById('messages').innerHTML = emptyStateHTML;
 });
@@ -737,7 +741,8 @@ function renderMarkdown(raw){
 }
 
 // [UPLOAD] role bisa diberi attachment opsional untuk ditampilkan di dalam bubble
-function addRow(role, attachment){
+// [MEMORY] timestamp opsional, dipakai saat me-render riwayat percakapan lama
+function addRow(role, attachment, timestamp){
   const empty = document.getElementById('empty-state');
   if(empty) empty.remove();
 
@@ -790,7 +795,7 @@ function addRow(role, attachment){
 
   const meta = document.createElement('div');
   meta.className = 'meta';
-  meta.textContent = timeNow();
+  meta.textContent = timestamp || timeNow(); // [MEMORY] pakai waktu asli riwayat kalau tersedia
 
   col.appendChild(wrap);
   col.appendChild(meta);
@@ -799,6 +804,52 @@ function addRow(role, attachment){
   messagesEl.appendChild(row);
   messagesEl.scrollTop = messagesEl.scrollHeight;
   return bubble;
+}
+
+// [MEMORY] Ambil riwayat percakapan dari /api/memories dan render ke #messages
+// begitu layar chat dibuka. Kalau gagal (network error / belum ada riwayat),
+// chat tetap jalan normal seperti biasa — cukup mulai dari kosong.
+async function loadChatHistory(){
+  if(historyLoaded) return;
+  const idToken = localStorage.getItem('id_token');
+  if(!idToken) return;
+
+  try{
+    const response = await fetch('/api/memories', {
+      headers: { 'Authorization': 'Bearer ' + idToken }
+    });
+    if(!response.ok) return;
+
+    const data = await response.json();
+    const chatHistory = Array.isArray(data.chatHistory) ? data.chatHistory : [];
+    if(chatHistory.length === 0){ historyLoaded = true; return; }
+
+    const empty = document.getElementById('empty-state');
+    if(empty) empty.remove();
+
+    for(const msg of chatHistory){
+      const role = msg.role === 'user' ? 'user' : 'ai';
+      const ts = msg.created_at
+        ? new Date(msg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        : undefined;
+      const bubble = addRow(role, null, ts);
+
+      if(role === 'ai'){
+        bubble.innerHTML = renderMarkdown(msg.content);
+      } else {
+        bubble.appendChild(Object.assign(document.createElement('span'), { textContent: msg.content }));
+      }
+
+      // isi juga `history` in-memory supaya konteks AI tetap nyambung
+      // dengan percakapan sebelumnya, bukan cuma tampilan visualnya saja.
+      history.push({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.content });
+    }
+
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    historyLoaded = true;
+  }catch(e){
+    console.error('Gagal memuat riwayat percakapan:', e);
+  }
 }
 
 // [AUTO-LOGIN] Dipanggil kalau server balas 401 di tengah chat. Coba silent
