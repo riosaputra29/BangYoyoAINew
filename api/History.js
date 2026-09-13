@@ -1,25 +1,20 @@
-
 // api/history.js
 // Vercel Serverless Function -- otomatis jadi endpoint /api/history
-// (satu file menangani GET dan POST, dibedakan lewat req.method,
-//  supaya sama-sama bisa baca/tulis ke tabel chat_history yang sama)
+// Memakai NEON (Postgres), bukan Supabase -- query lewat HTTP driver resmi Neon
+// yang memang didesain untuk serverless functions (tanpa pool koneksi TCP manual).
 //
-// npm install @supabase/supabase-js google-auth-library
+// npm install @neondatabase/serverless google-auth-library
 //
 // Environment variables yang WAJIB diisi di Vercel
 // (Project Settings -> Environment Variables):
-//   SUPABASE_URL
-//   SUPABASE_SERVICE_ROLE_KEY   <- dari Supabase: Project Settings -> API -> service_role
-//   GOOGLE_CLIENT_ID            <- sama dengan yang dipakai di public/index.html
+//   DATABASE_URL      <- connection string dari Neon console, contoh:
+//                        postgresql://user:password@ep-xxxx.region.aws.neon.tech/dbname?sslmode=require
+//   GOOGLE_CLIENT_ID  <- sama dengan yang dipakai di public/index.html
 
-const { createClient } = require("@supabase/supabase-js");
+const { neon } = require("@neondatabase/serverless");
 const { OAuth2Client } = require("google-auth-library");
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
+const sql = neon(process.env.DATABASE_URL);
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Verifikasi Google ID token dari header Authorization: Bearer <token>.
@@ -48,52 +43,49 @@ module.exports = async function handler(req, res) {
     return res.status(401).json({ error: "Token tidak ada atau tidak valid" });
   }
 
-  // ---- GET /api/history: ambil riwayat chat milik user ini ----
-  if (req.method === "GET") {
-    const { data, error } = await supabase
-      .from("chat_history")
-      .select("role, content, created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(200); // batasi supaya payload tidak membengkak untuk user lama
+  try {
+    // ---- GET /api/history: ambil riwayat chat milik user ini ----
+    if (req.method === "GET") {
+      const rows = await sql`
+        SELECT role, content, created_at
+        FROM chat_history
+        WHERE user_id = ${userId}
+        ORDER BY created_at ASC
+        LIMIT 200
+      `;
 
-    if (error) {
-      console.error("Gagal mengambil riwayat chat:", error);
-      return res.status(500).json({ error: "Gagal mengambil riwayat chat" });
+      return res.status(200).json({
+        messages: rows.map((row) => ({ role: row.role, content: row.content })),
+      });
     }
 
-    return res.status(200).json({
-      messages: data.map((row) => ({ role: row.role, content: row.content })),
-    });
+    // ---- POST /api/history: simpan satu baris pesan ----
+    if (req.method === "POST") {
+      const { role, content } = req.body || {};
+
+      if (role !== "user" && role !== "assistant") {
+        return res.status(400).json({ error: "role harus 'user' atau 'assistant'" });
+      }
+      if (typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ error: "content wajib diisi" });
+      }
+
+      const safeContent = content.slice(0, 20000); // jaga-jaga biar tidak ada baris raksasa
+
+      await sql`
+        INSERT INTO chat_history (user_id, role, content, created_at)
+        VALUES (${userId}, ${role}, ${safeContent}, NOW())
+      `;
+
+      return res.status(201).json({ ok: true });
+    }
+
+    res.setHeader("Allow", ["GET", "POST"]);
+    return res.status(405).json({ error: "Method tidak diizinkan" });
+  } catch (err) {
+    // [DEBUG] log detail error asli ke Vercel Function Logs supaya gampang dilacak
+    // kalau masih gagal (mis. salah nama kolom, DATABASE_URL belum keset, dll).
+    console.error("Error /api/history:", err);
+    return res.status(500).json({ error: "Gagal memproses riwayat chat" });
   }
-
-  // ---- POST /api/history: simpan satu baris pesan ----
-  if (req.method === "POST") {
-    const { role, content } = req.body || {};
-
-    if (role !== "user" && role !== "assistant") {
-      return res.status(400).json({ error: "role harus 'user' atau 'assistant'" });
-    }
-    if (typeof content !== "string" || !content.trim()) {
-      return res.status(400).json({ error: "content wajib diisi" });
-    }
-
-    const safeContent = content.slice(0, 20000); // jaga-jaga biar tidak ada baris raksasa
-
-    const { error } = await supabase.from("chat_history").insert({
-      user_id: userId,
-      role,
-      content: safeContent,
-    });
-
-    if (error) {
-      console.error("Gagal menyimpan riwayat chat:", error);
-      return res.status(500).json({ error: "Gagal menyimpan riwayat chat" });
-    }
-
-    return res.status(201).json({ ok: true });
-  }
-
-  res.setHeader("Allow", ["GET", "POST"]);
-  return res.status(405).json({ error: "Method tidak diizinkan" });
 };
