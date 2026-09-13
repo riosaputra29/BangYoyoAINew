@@ -1,6 +1,5 @@
 import { OAuth2Client } from "google-auth-library";
-import { getMemories, formatMemoriesForPrompt } from "../lib/memory.js";
-import { saveChatMessage } from "../lib/memory.js"; // [MEMORY]
+import { getMemories, formatMemoriesForPrompt, saveChatMessage, createConversation, makeTitleFromMessage } from "../lib/memory.js"; // [MEMORY]
 import { extractAndSaveFacts } from "../lib/extract.js"; // [MEMORY]
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -25,7 +24,6 @@ export default async function handler(req, res) {
     return;
   }
 
-  // 1. Cek header Authorization
   const authHeader = req.headers.authorization || "";
   if (!authHeader.startsWith("Bearer ")) {
     res.status(401).json({ error: "Belum login dengan Google." });
@@ -33,20 +31,18 @@ export default async function handler(req, res) {
   }
   const idToken = authHeader.substring(7).trim();
 
-  // 2. Verifikasi token Google
-  let userId; // [MEMORY] dipakai sebagai key di tabel memories & messages
+  let userId;
   try {
     const googleUser = await verifyGoogleToken(idToken);
     console.log(`Google login: ${googleUser.email || "unknown"}`);
-    userId = googleUser.sub; // [MEMORY] "sub" = ID Google yang stabil, lebih aman dari email
+    userId = googleUser.sub;
   } catch (err) {
     console.error("Google verification error:", err.message);
     res.status(401).json({ error: "Sesi Google tidak valid atau sudah kedaluwarsa." });
     return;
   }
 
-  // 3. Validasi & bersihkan messages
-  const { messages } = req.body || {};
+  const { messages, conversationId } = req.body || {}; // [MEMORY]
   if (!Array.isArray(messages) || messages.length === 0) {
     res.status(400).json({ error: "Pesan kosong atau format salah." });
     return;
@@ -66,12 +62,23 @@ export default async function handler(req, res) {
     return;
   }
 
-  // [MEMORY] Pesan baru dari user = item terakhir yang role-nya "user"
   const lastUserMessage = [...cleanMessages].reverse().find((m) => m.role === "user");
 
-  // [MEMORY] Ambil memory (fakta jangka panjang) tersimpan buat user ini.
-  // Kalau gagal (misal DB lagi bermasalah), jangan sampai bikin chat gagal total —
-  // cukup jalan tanpa konteks memory.
+  // [MEMORY] Kalau client belum kirim conversationId (chat baru / tombol "New"),
+  // buat baris baru di tabel conversations dulu, judulnya dari pesan pertama.
+  let convId = conversationId ? Number(conversationId) : null;
+  if (!convId) {
+    try {
+      const title = makeTitleFromMessage(lastUserMessage?.content);
+      const conv = await createConversation(userId, title);
+      convId = conv.id;
+    } catch (err) {
+      console.error("Gagal membuat percakapan baru:", err);
+      res.status(500).json({ error: "Gagal membuat percakapan baru." });
+      return;
+    }
+  }
+
   let memoryText = "Belum ada memory tersimpan untuk user ini.";
   try {
     const memories = await getMemories(userId);
@@ -91,15 +98,12 @@ export default async function handler(req, res) {
     ...cleanMessages,
   ];
 
-  // [MEMORY] Simpan pesan user ke DB. Tidak di-await blocking penuh alur utama
-  // kalau gagal — cukup di-log, chat tetap lanjut.
   if (lastUserMessage) {
-    saveChatMessage(userId, "user", lastUserMessage.content).catch((err) =>
+    saveChatMessage(userId, convId, "user", lastUserMessage.content).catch((err) =>
       console.error("Gagal simpan pesan user:", err)
     );
   }
 
-  // 4. Panggil Groq (streaming)
   let upstream;
   try {
     upstream = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -132,29 +136,25 @@ export default async function handler(req, res) {
     return;
   }
 
-  // 5. Stream balik ke browser
   res.status(200);
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
+  res.setHeader("X-Conversation-Id", String(convId)); // [MEMORY] biar frontend tahu ID percakapan ini
   if (res.flushHeaders) res.flushHeaders();
 
   const reader = upstream.body.getReader();
   req.on("close", () => reader.cancel().catch(() => {}));
 
-  // [MEMORY] Selain diteruskan mentah ke browser, kita juga parse tiap chunk
-  // SSE-nya buat mengumpulkan teks balasan lengkap, supaya bisa disimpan ke
-  // DB setelah stream selesai (client tidak melihat proses ini sama sekali).
-  const decoder = new TextDecoder(); // [MEMORY]
-  let sseBuffer = ""; // [MEMORY]
-  let fullReply = ""; // [MEMORY]
+  const decoder = new TextDecoder();
+  let sseBuffer = "";
+  let fullReply = "";
 
   function processSSEChunk(chunkText) {
-    // [MEMORY]
     sseBuffer += chunkText;
     const lines = sseBuffer.split("\n");
-    sseBuffer = lines.pop() ?? ""; // sisa baris belum lengkap, simpan buat chunk berikutnya
+    sseBuffer = lines.pop() ?? "";
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed.startsWith("data:")) continue;
@@ -164,9 +164,7 @@ export default async function handler(req, res) {
         const json = JSON.parse(payload);
         const delta = json?.choices?.[0]?.delta?.content;
         if (typeof delta === "string") fullReply += delta;
-      } catch {
-        // baris tidak lengkap/bukan JSON valid, abaikan saja
-      }
+      } catch {}
     }
   }
 
@@ -174,21 +172,17 @@ export default async function handler(req, res) {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      res.write(value); // teruskan mentah ke browser, tidak diubah sama sekali
-      processSSEChunk(decoder.decode(value, { stream: true })); // [MEMORY]
+      res.write(value);
+      processSSEChunk(decoder.decode(value, { stream: true }));
     }
   } catch (err) {
     console.error("Streaming error:", err);
   } finally {
     res.end();
 
-    // [MEMORY] Setelah stream selesai & response sudah ditutup ke user,
-    // simpan balasan lengkap + jalankan ekstraksi fakta baru ke memory.
-    // Vercel tetap menjaga function ini hidup sampai handler selesai,
-    // jadi await di sini aman walau res sudah di-end().
     if (fullReply.trim()) {
       try {
-        await saveChatMessage(userId, "assistant", fullReply.trim());
+        await saveChatMessage(userId, convId, "assistant", fullReply.trim());
       } catch (err) {
         console.error("Gagal simpan balasan assistant:", err);
       }
