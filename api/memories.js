@@ -1,13 +1,10 @@
 import { OAuth2Client } from "google-auth-library";
-import { getMemories, getChatHistory } from "../lib/memory.js"; // [MEMORY]
+import { getMemories, getChatHistory } from "../lib/memory.js";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
-// GET /api/memories  (Authorization: Bearer <google id token>)
-// Sengaja tidak menerima userId dari luar — selalu pakai identitas
-// dari token Google yang sedang login, biar user cuma bisa lihat
-// memory & chat history miliknya sendiri.
+// GET /api/memories?conversationId=123  (Authorization: Bearer <google id token>)
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.status(405).json({ error: "Method not allowed" });
@@ -28,11 +25,11 @@ export default async function handler(req, res) {
     const payload = ticket.getPayload();
     if (!payload) throw new Error("Payload Google tidak ditemukan.");
 
-    // [MEMORY] Ambil keduanya sekaligus — dipanggil sekali saat layar
-    // chat dibuka, jadi tidak perlu dua request terpisah dari frontend.
+    const conversationId = req.query.conversationId ? Number(req.query.conversationId) : null;
+
     const [memories, chatHistory] = await Promise.all([
       getMemories(payload.sub),
-      getChatHistory(payload.sub),
+      conversationId ? getChatHistory(payload.sub, conversationId) : Promise.resolve([]),
     ]);
 
     res.status(200).json({ memories, chatHistory });
