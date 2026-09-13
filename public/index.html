@@ -312,35 +312,57 @@ function decodeJwt(token){
   return JSON.parse(atob(payload.replace(/-/g,'+').replace(/_/g,'/')));
 }
 
-function handleCredentialResponse(response){
-  userProfile = decodeJwt(response.credential);
+// [AUTO-LOGIN] Cek apakah token JWT sudah lewat waktu expired-nya (klaim "exp", dalam detik)
+function isTokenExpired(token){
+  try{
+    const { exp } = decodeJwt(token);
+    return !exp || (Date.now() / 1000) > exp;
+  }catch(e){
+    return true;
+  }
+}
+
+function showChatScreen(){
   document.getElementById('user-avatar').src = userProfile.picture;
   document.getElementById('user-name').textContent = userProfile.name;
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('chat-screen').style.display = 'flex';
-  sessionStorage.setItem('id_token', response.credential);
+}
+
+function handleCredentialResponse(response){
+  userProfile = decodeJwt(response.credential);
+  localStorage.setItem('id_token', response.credential); // [AUTO-LOGIN] localStorage, bukan sessionStorage
+  showChatScreen();
   document.getElementById('chat-input').focus();
 }
 
 window.onload = function(){
   try{
     google.accounts.id.initialize({
-    client_id: GOOGLE_CLIENT_ID,
-    callback: handleCredentialResponse
-});
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleCredentialResponse,
+      auto_select: true // [AUTO-LOGIN] izinkan Google pilih akun otomatis kalau sesi masih aktif
+    });
     google.accounts.id.renderButton(
       document.getElementById('google-btn-container'),
       { theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', width: 320 }
     );
 
-    // Kalau sesi login sebelumnya masih tersimpan di tab ini, langsung masuk chat
-    const savedToken = sessionStorage.getItem('id_token');
-    if(savedToken){
+    const savedToken = localStorage.getItem('id_token'); // [AUTO-LOGIN]
+
+    if(savedToken && !isTokenExpired(savedToken)){
+      // Token masih valid, langsung masuk chat tanpa proses apa pun.
       userProfile = decodeJwt(savedToken);
-      document.getElementById('user-avatar').src = userProfile.picture;
-      document.getElementById('user-name').textContent = userProfile.name;
-      document.getElementById('login-screen').style.display = 'none';
-      document.getElementById('chat-screen').style.display = 'flex';
+      showChatScreen();
+    } else {
+      // [AUTO-LOGIN] Token tidak ada / sudah expired.
+      // Coba minta Google diam-diam terbitkan token baru (One Tap silent).
+      // Kalau sesi Google di browser masih aktif, ini berhasil TANPA
+      // menampilkan layar login sama sekali. Kalau gagal/di-skip
+      // (misal user memang sudah logout total dari Google), biarkan
+      // layar login default tampil seperti biasa.
+      localStorage.removeItem('id_token');
+      google.accounts.id.prompt(); // silent — kalau gagal, tidak melempar error, cuma diam
     }
   }catch(e){
     document.getElementById('login-error').style.display = 'block';
@@ -348,7 +370,7 @@ window.onload = function(){
 };
 
 document.getElementById('signout-btn').addEventListener('click', () => {
-  sessionStorage.removeItem('id_token');
+  localStorage.removeItem('id_token'); // [AUTO-LOGIN]
   google.accounts.id.disableAutoSelect();
   document.getElementById('chat-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
@@ -443,11 +465,37 @@ function addRow(role){
   return bubble;
 }
 
+// [AUTO-LOGIN] Dipanggil kalau server balas 401 di tengah chat (token expired
+// pas lagi dipakai). Coba silent re-auth dulu sebelum nyerah ke layar login.
+function trySilentReauthThenRetry(onSuccess, onFail){
+  const originalCallback = handleCredentialResponse;
+  let settled = false;
+
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    auto_select: true,
+    callback: (response) => {
+      settled = true;
+      originalCallback(response);
+      onSuccess();
+    }
+  });
+  google.accounts.id.prompt((notification) => {
+    // Kalau One Tap di-skip/tidak ditampilkan (sesi Google memang sudah habis)
+    if(!settled && (notification.isNotDisplayed() || notification.isSkippedMoment())){
+      onFail();
+    }
+  });
+
+  // Jaga-jaga kalau callback notification tidak pernah terpanggil
+  setTimeout(() => { if(!settled) onFail(); }, 3000);
+}
+
 async function sendMessage(){
   const text = input.value.trim();
   if(!text) return;
 
-  const idToken = sessionStorage.getItem('id_token');
+  const idToken = localStorage.getItem('id_token'); // [AUTO-LOGIN]
   if(!idToken){
     alert('Sesi login sudah habis. Silakan login ulang dengan Google.');
     document.getElementById('chat-screen').style.display = 'none';
@@ -481,8 +529,19 @@ async function sendMessage(){
     });
 
     if(response.status === 401){
-      aiBubble.textContent = 'Sesi login sudah habis. Silakan login ulang.';
-      sessionStorage.removeItem('id_token');
+      // [AUTO-LOGIN] Jangan langsung nyerah — coba silent re-auth dulu.
+      aiBubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
+      trySilentReauthThenRetry(
+        () => { sendBtn.disabled = false; aiBubble.closest('.row').remove(); sendMessage(); },
+        () => {
+          aiBubble.textContent = 'Sesi login sudah habis. Silakan login ulang.';
+          localStorage.removeItem('id_token');
+          setTimeout(() => {
+            document.getElementById('chat-screen').style.display = 'none';
+            document.getElementById('login-screen').style.display = 'flex';
+          }, 1200);
+        }
+      );
       return;
     }
 
@@ -513,11 +572,6 @@ async function sendMessage(){
 
         try{
           const json = JSON.parse(raw);
-
-          // ==== FORMAT GROQ (OpenAI-compatible SSE) ====
-          // Tiap event berbentuk:
-          // { "choices": [ { "delta": { "content": "..." }, "finish_reason": null } ] }
-          // Event terakhir biasanya delta kosong dengan finish_reason: "stop"
           const choice = json.choices && json.choices[0];
           const chunkText = choice && choice.delta && choice.delta.content;
 
@@ -529,8 +583,6 @@ async function sendMessage(){
             if(stayPinned) messagesEl.scrollTop = messagesEl.scrollHeight;
           }
 
-          // Kalau Groq menghentikan respons karena alasan selain selesai normal
-          // (mis. kena batas token, atau diblokir filter konten)
           const finishReason = choice && choice.finish_reason;
           if(finishReason && finishReason !== 'stop' && !chunkText && !started){
             aiBubble.textContent = 'Respons berhenti (alasan: ' + finishReason + ').';
