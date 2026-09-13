@@ -163,14 +163,26 @@
     padding:6px 10px 8px;
   }
   .sidebar-chat-item{
-    display:flex; align-items:center; gap:9px; background:none; border:none; color:var(--text-muted);
-    padding:9px 10px; border-radius:8px; font-size:0.85rem; cursor:pointer; text-align:left; width:100%;
-    line-height:1.4;
+    display:flex; align-items:center; width:100%; min-width:0; padding:0;
+    border-radius:8px; background:none; border:none; color:var(--text-muted); line-height:1.4;
   }
   .sidebar-chat-item:hover{background:var(--surface-2); color:var(--text);}
   .sidebar-chat-item.active{background:var(--accent-dim); color:var(--text);}
-  .sidebar-chat-item svg{width:14px; height:14px; flex-shrink:0; opacity:0.8;}
-  .sidebar-chat-item span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .sidebar-chat-main{
+    flex:1; min-width:0; display:flex; align-items:center; gap:9px;
+    padding:9px 6px 9px 10px; background:none; border:none; color:inherit;
+    font-size:0.85rem; line-height:1.4; cursor:pointer; text-align:left;
+  }
+  .sidebar-chat-main svg{width:14px; height:14px; flex-shrink:0; opacity:0.8;}
+  .sidebar-chat-main span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .sidebar-delete-btn{
+    width:30px; height:30px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    margin-right:4px; background:none; border:none; border-radius:6px; color:var(--text-muted);
+    cursor:pointer; opacity:0; transition:opacity .15s ease, background .15s ease, color .15s ease;
+  }
+  .sidebar-chat-item:hover .sidebar-delete-btn{opacity:1;}
+  .sidebar-delete-btn svg{width:14px; height:14px;}
+  .sidebar-delete-btn:hover{background:rgba(224,108,117,.12); color:#e06c75;}
   .sidebar-empty-note{font-size:0.78rem; color:var(--text-muted); padding:8px 10px; line-height:1.5;}
 
   #sidebar-backdrop{display:none;}
@@ -657,13 +669,90 @@ function renderConversationList(){
   }
 
   for(const conv of conversationsList){
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'sidebar-chat-item' + (conv.id === currentConversationId ? ' active' : '');
-    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><span></span>';
-    btn.querySelector('span').textContent = conv.title || 'Percakapan';
-    btn.addEventListener('click', () => selectConversation(conv.id));
-    sidebarChatListEl.appendChild(btn);
+    const item = document.createElement('div');
+    item.className = 'sidebar-chat-item' + (Number(conv.id) === Number(currentConversationId) ? ' active' : '');
+
+    item.innerHTML = `
+      <button type="button" class="sidebar-chat-main" aria-label="Buka percakapan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+        </svg>
+        <span></span>
+      </button>
+      <button type="button" class="sidebar-delete-btn" title="Hapus percakapan" aria-label="Hapus percakapan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18"/>
+          <path d="M8 6V4h8v2"/>
+          <path d="M19 6l-1 14H6L5 6"/>
+          <path d="M10 11v5"/>
+          <path d="M14 11v5"/>
+        </svg>
+      </button>
+    `;
+
+    const mainBtn = item.querySelector('.sidebar-chat-main');
+    mainBtn.querySelector('span').textContent = conv.title || 'Percakapan';
+    mainBtn.title = conv.title || 'Percakapan';
+    mainBtn.addEventListener('click', () => selectConversation(conv.id));
+
+    item.querySelector('.sidebar-delete-btn').addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteConversationFromSidebar(conv.id);
+    });
+
+    sidebarChatListEl.appendChild(item);
+  }
+}
+
+// [CONV] Hapus satu percakapan beserta seluruh pesan di dalamnya.
+async function deleteConversationFromSidebar(conversationId){
+  const conversation = conversationsList.find(c => Number(c.id) === Number(conversationId));
+  if(!conversation) return;
+
+  const title = conversation.title || 'Percakapan';
+  const confirmed = confirm(
+    `Hapus percakapan "${title}"?\n\nSemua pesan dalam percakapan ini akan dihapus.`
+  );
+  if(!confirmed) return;
+
+  const idToken = localStorage.getItem('id_token');
+  if(!idToken){
+    alert('Sesi login sudah habis. Silakan login kembali.');
+    return;
+  }
+
+  try{
+    const response = await fetch(
+      '/api/conversations?conversationId=' + encodeURIComponent(conversationId),
+      {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + idToken }
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if(!response.ok){
+      throw new Error(data.error || 'Gagal menghapus percakapan.');
+    }
+
+    conversationsList = conversationsList.filter(
+      c => Number(c.id) !== Number(conversationId)
+    );
+
+    if(Number(currentConversationId) === Number(conversationId)){
+      currentConversationId = null;
+      history = [];
+      clearAttachment();
+      document.getElementById('messages').innerHTML = emptyStateHTML;
+    }
+
+    renderConversationList();
+
+  }catch(e){
+    console.error('Delete conversation error:', e);
+    alert(e.message || 'Gagal menghapus percakapan.');
   }
 }
 
