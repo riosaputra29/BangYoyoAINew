@@ -530,7 +530,14 @@ async function loadHistoryFromServer(){
     const res = await fetch('/api/history', {
       headers: { 'Authorization': 'Bearer ' + idToken }
     });
-    if(!res.ok) return; // diamkan saja kalau endpoint belum ada / gagal -- chat tetap bisa dipakai
+    if(!res.ok){
+      // [DEBUG] jangan ganggu chat, tapi tampilkan detail error di console
+      // supaya gampang dilacak lewat DevTools -> Console/Network
+      let detail = '';
+      try{ detail = await res.text(); }catch(_e){}
+      console.error('[HISTORY] Gagal memuat riwayat. Status:', res.status, detail);
+      return;
+    }
 
     const data = await res.json();
     const messages = Array.isArray(data.messages) ? data.messages : [];
@@ -554,7 +561,8 @@ async function loadHistoryFromServer(){
 
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }catch(e){
-    // gagal diam-diam -- riwayat lama opsional, chat baru tetap jalan
+    // [DEBUG] gagal (mis. jaringan/CORS), tetap tidak menghentikan chat -- tapi dicatat di console
+    console.error('[HISTORY] Error saat memuat riwayat:', e);
   }
 }
 
@@ -570,7 +578,16 @@ function saveHistoryMessage(role, content){
       'Authorization': 'Bearer ' + idToken
     },
     body: JSON.stringify({ role, content })
-  }).catch(() => { /* gagal simpan riwayat tidak menghentikan chat */ });
+  }).then(async (res) => {
+    if(!res.ok){
+      // [DEBUG] tidak mengganggu chat, tapi errornya dicatat di console
+      let detail = '';
+      try{ detail = await res.text(); }catch(_e){}
+      console.error('[HISTORY] Gagal menyimpan pesan. Status:', res.status, detail);
+    }
+  }).catch((e) => {
+    console.error('[HISTORY] Error jaringan saat menyimpan pesan:', e);
+  });
 }
 
 function handleCredentialResponse(response){
