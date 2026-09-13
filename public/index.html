@@ -308,6 +308,15 @@ const DUMMY_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/sv
 let history = [];
 let userProfile = null;
 
+document.getElementById('demo-btn').addEventListener('click', () => {
+  userProfile = { name: 'Ken Ardian', picture: DUMMY_AVATAR, email: 'ken.ardian@contoh.com' };
+  document.getElementById('user-avatar').src = userProfile.picture;
+  document.getElementById('user-name').textContent = userProfile.name;
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('chat-screen').style.display = 'flex';
+  document.getElementById('chat-input').focus();
+});
+
 function decodeJwt(token){
   const payload = token.split('.')[1];
   return JSON.parse(atob(payload.replace(/-/g,'+').replace(/_/g,'/')));
