@@ -137,6 +137,59 @@
   }
   #signout-btn:hover{border-color:var(--accent); color:var(--text);}
 
+  .header-left{display:flex; align-items:center; gap:10px;}
+  .sidebar-toggle-btn{
+    display:none; background:none; border:1px solid var(--border); color:var(--text-muted);
+    width:32px; height:32px; border-radius:8px; cursor:pointer; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .sidebar-toggle-btn:hover{border-color:var(--accent); color:var(--text);}
+  .sidebar-toggle-btn svg{width:16px; height:16px;}
+
+  /* [SIDEBAR] kolom kiri: New + Chats and tasks */
+  #chat-body{flex:1; display:flex; min-height:0; overflow:hidden;}
+  #sidebar{
+    width:240px; flex-shrink:0; background:var(--surface); border-right:1px solid var(--border);
+    display:flex; flex-direction:column; padding:16px 10px; gap:2px; overflow-y:auto;
+  }
+  #new-chat-btn{
+    display:flex; align-items:center; gap:8px; background:none; border:1px solid var(--border);
+    color:var(--text); padding:9px 12px; border-radius:10px; font-size:0.86rem; font-weight:500;
+    cursor:pointer; margin-bottom:16px; width:100%; text-align:left;
+  }
+  #new-chat-btn:hover{border-color:var(--accent); color:var(--accent);}
+  #new-chat-btn svg{width:14px; height:14px; flex-shrink:0;}
+  .sidebar-section-label{
+    font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em;
+    padding:6px 10px 8px;
+  }
+  .sidebar-chat-item{
+    display:flex; align-items:center; gap:9px; background:none; border:none; color:var(--text-muted);
+    padding:9px 10px; border-radius:8px; font-size:0.85rem; cursor:pointer; text-align:left; width:100%;
+    line-height:1.4;
+  }
+  .sidebar-chat-item:hover{background:var(--surface-2); color:var(--text);}
+  .sidebar-chat-item.active{background:var(--accent-dim); color:var(--text);}
+  .sidebar-chat-item svg{width:14px; height:14px; flex-shrink:0; opacity:0.8;}
+
+  #sidebar-backdrop{display:none;}
+
+  #chat-main{flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden; position:relative;}
+
+  @media (max-width: 760px){
+    .sidebar-toggle-btn{display:flex;}
+    #sidebar{
+      position:fixed; top:0; left:0; height:100%; z-index:40; width:250px;
+      transform:translateX(-100%); transition:transform .2s ease;
+      box-shadow:16px 0 32px -16px rgba(0,0,0,0.6);
+      padding-top:calc(16px + env(safe-area-inset-top));
+    }
+    #sidebar.open{transform:translateX(0);}
+    #sidebar-backdrop{
+      display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:30;
+    }
+    #sidebar-backdrop.visible{display:block;}
+  }
+
   #messages{
     flex:1; overflow-y:auto; padding:28px 0 12px;
     display:flex; flex-direction:column; gap:22px;
@@ -356,7 +409,12 @@
 
 <section id="chat-screen">
   <header>
-    <div class="brand"><span class="dot"></span>Tanya</div>
+    <div class="header-left">
+      <button class="sidebar-toggle-btn" id="sidebar-toggle-btn" type="button" title="Menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <div class="brand"><span class="dot"></span>Tanya</div>
+    </div>
     <div id="user-menu">
       <div id="user-chip">
         <img id="user-avatar" src="" alt="">
@@ -366,44 +424,64 @@
     </div>
   </header>
 
-  <div id="messages">
-    <div id="empty-state">
-      <div class="mark">T</div>
-      <div class="lead">Mau mulai dari mana?</div>
-      <p class="sub">Tulis pesan bebas, lampirkan gambar/file, atau coba salah satu di bawah ini.</p>
-      <div class="chip-row">
-        <button class="chip" data-prompt="Ringkas topik yang rumit jadi bahasa sederhana">Ringkas topik rumit</button>
-        <button class="chip" data-prompt="Bantu saya menyusun draf email profesional">Bantu tulis email</button>
-        <button class="chip" data-prompt="Beri saya ide untuk menyelesaikan masalah berikut:">Cari ide solusi</button>
-      </div>
-    </div>
-  </div>
-  <button id="scroll-bottom">↓ Pesan terbaru</button>
+  <div id="chat-body">
+    <!-- [SIDEBAR] backdrop untuk mobile, klik di luar sidebar buat nutup -->
+    <div id="sidebar-backdrop"></div>
 
-  <div id="composer-wrap">
-    <!-- [UPLOAD] pratinjau lampiran -->
-    <div id="attachment-preview">
-      <img id="att-img-preview" style="display:none" alt="Pratinjau gambar">
-      <div class="file-icon" id="att-file-icon" style="display:none">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
-      </div>
-      <div class="att-info">
-        <div class="att-name" id="att-name"></div>
-        <div class="att-size" id="att-size"></div>
-      </div>
-      <button class="att-remove" id="att-remove" title="Hapus lampiran">✕</button>
-    </div>
+    <!-- [SIDEBAR] hanya "New" + "Chats and tasks" (satu riwayat, bukan multi-percakapan) -->
+    <aside id="sidebar">
+      <button id="new-chat-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        New
+      </button>
+      <div class="sidebar-section-label">Chats and tasks</div>
+      <button class="sidebar-chat-item active" id="sidebar-history-item" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+        <span>Percakapanmu dengan Tanya</span>
+      </button>
+    </aside>
 
-    <div id="composer">
-      <input type="file" id="file-input" accept="image/*,.txt,.md,.csv,.json,.log" hidden>
-      <button class="attach-btn" id="attach-btn" type="button" title="Lampirkan gambar atau file">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l9.19-9.19a3.5 3.5 0 014.95 4.95l-9.19 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-      </button>
-      <textarea id="chat-input" rows="1" placeholder="Tulis pesan ke Tanya..."></textarea>
-      <button id="send-btn">
-        Kirim
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
-      </button>
+    <div id="chat-main">
+      <div id="messages">
+        <div id="empty-state">
+          <div class="mark">T</div>
+          <div class="lead">Mau mulai dari mana?</div>
+          <p class="sub">Tulis pesan bebas, lampirkan gambar/file, atau coba salah satu di bawah ini.</p>
+          <div class="chip-row">
+            <button class="chip" data-prompt="Ringkas topik yang rumit jadi bahasa sederhana">Ringkas topik rumit</button>
+            <button class="chip" data-prompt="Bantu saya menyusun draf email profesional">Bantu tulis email</button>
+            <button class="chip" data-prompt="Beri saya ide untuk menyelesaikan masalah berikut:">Cari ide solusi</button>
+          </div>
+        </div>
+      </div>
+      <button id="scroll-bottom">↓ Pesan terbaru</button>
+
+      <div id="composer-wrap">
+        <!-- [UPLOAD] pratinjau lampiran -->
+        <div id="attachment-preview">
+          <img id="att-img-preview" style="display:none" alt="Pratinjau gambar">
+          <div class="file-icon" id="att-file-icon" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+          </div>
+          <div class="att-info">
+            <div class="att-name" id="att-name"></div>
+            <div class="att-size" id="att-size"></div>
+          </div>
+          <button class="att-remove" id="att-remove" title="Hapus lampiran">✕</button>
+        </div>
+
+        <div id="composer">
+          <input type="file" id="file-input" accept="image/*,.txt,.md,.csv,.json,.log" hidden>
+          <button class="attach-btn" id="attach-btn" type="button" title="Lampirkan gambar atau file">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l9.19-9.19a3.5 3.5 0 014.95 4.95l-9.19 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <textarea id="chat-input" rows="1" placeholder="Tulis pesan ke Tanya..."></textarea>
+          <button id="send-btn">
+            Kirim
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -499,6 +577,7 @@ document.getElementById('signout-btn').addEventListener('click', () => {
   historyLoaded = false; // [MEMORY] reset supaya akun lain tidak kebawa riwayat akun sebelumnya
   clearAttachment(); // [UPLOAD]
   document.getElementById('messages').innerHTML = emptyStateHTML;
+  closeSidebar(); // [SIDEBAR]
 });
 
 const input = document.getElementById('chat-input');
@@ -517,6 +596,46 @@ const attFileIcon = document.getElementById('att-file-icon');
 const attName = document.getElementById('att-name');
 const attSize = document.getElementById('att-size');
 const attRemove = document.getElementById('att-remove');
+
+// [SIDEBAR] elemen-elemen sidebar
+const sidebarEl = document.getElementById('sidebar');
+const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
+const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+const newChatBtn = document.getElementById('new-chat-btn');
+const sidebarHistoryItem = document.getElementById('sidebar-history-item');
+
+function openSidebar(){
+  sidebarEl.classList.add('open');
+  sidebarBackdrop.classList.add('visible');
+}
+function closeSidebar(){
+  sidebarEl.classList.remove('open');
+  sidebarBackdrop.classList.remove('visible');
+}
+sidebarToggleBtn.addEventListener('click', () => {
+  sidebarEl.classList.contains('open') ? closeSidebar() : openSidebar();
+});
+sidebarBackdrop.addEventListener('click', closeSidebar);
+
+// [SIDEBAR] "New" mengosongkan tampilan chat + konteks in-memory (bukan menghapus
+// riwayat di database — riwayat lama tetap ada dan akan muncul lagi kalau halaman
+// di-refresh, karena masih satu tabel chat_history yang sama per user).
+newChatBtn.addEventListener('click', () => {
+  if(history.length > 0 && !confirm('Mulai percakapan baru? Tampilan chat saat ini akan dikosongkan.')) return;
+  history = [];
+  historyLoaded = true; // [MEMORY] cegah riwayat lama otomatis kemuat ulang di sesi ini
+  clearAttachment();
+  document.getElementById('messages').innerHTML = emptyStateHTML;
+  closeSidebar();
+  input.focus();
+});
+
+// [SIDEBAR] item ini mewakili satu-satunya riwayat yang ada — klik cukup
+// gulir ke pesan terbaru & tutup sidebar (di mobile), tidak ganti konteks apa pun.
+sidebarHistoryItem.addEventListener('click', () => {
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  closeSidebar();
+});
 
 document.getElementById('messages').addEventListener('click', (e) => {
   const chip = e.target.closest('.chip');
