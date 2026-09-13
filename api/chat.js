@@ -1,6 +1,6 @@
 import { OAuth2Client } from "google-auth-library";
 import { getMemories, formatMemoriesForPrompt } from "../lib/memory.js";
-import { saveMessage } from "../lib/messages.js"; // [MEMORY]
+import { saveChatMessage } from "../lib/memory.js"; // [MEMORY]
 import { extractAndSaveFacts } from "../lib/extract.js"; // [MEMORY]
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -94,7 +94,7 @@ export default async function handler(req, res) {
   // [MEMORY] Simpan pesan user ke DB. Tidak di-await blocking penuh alur utama
   // kalau gagal — cukup di-log, chat tetap lanjut.
   if (lastUserMessage) {
-    saveMessage(userId, "user", lastUserMessage.content).catch((err) =>
+    saveChatMessage(userId, "user", lastUserMessage.content).catch((err) =>
       console.error("Gagal simpan pesan user:", err)
     );
   }
@@ -188,7 +188,7 @@ export default async function handler(req, res) {
     // jadi await di sini aman walau res sudah di-end().
     if (fullReply.trim()) {
       try {
-        await saveMessage(userId, "assistant", fullReply.trim());
+        await saveChatMessage(userId, "assistant", fullReply.trim());
       } catch (err) {
         console.error("Gagal simpan balasan assistant:", err);
       }
