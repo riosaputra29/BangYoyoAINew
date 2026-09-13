@@ -9,6 +9,7 @@
   "dependencies": {
     "express": "^4.19.2",
     "google-auth-library": "^9.11.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "@neondatabase/serverless": "^0.10.4"
   }
 }
