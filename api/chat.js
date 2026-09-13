@@ -1,11 +1,17 @@
 import { OAuth2Client } from "google-auth-library";
-import { getMemories, formatMemoriesForPrompt, saveChatMessage, createConversation, makeTitleFromMessage } from "../lib/memory.js"; // [MEMORY]
-import { extractAndSaveFacts } from "../lib/extract.js"; // [MEMORY]
+import { getMemories, formatMemoriesForPrompt, saveChatMessage, createConversation, makeTitleFromMessage } from "../lib/memory.js";
+import { extractAndSaveFacts } from "../lib/extract.js";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
+// 1. UBAH JADI ARRAY 2 KEY
+const GROQ_API_KEYS = [
+  process.env.GROQ_KEY_1,
+  process.env.GROQ_KEY_2
+];
+let currentKeyIndex = 0; // buat nandain key yg lagi dipake
+
+const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 async function verifyGoogleToken(idToken) {
@@ -18,8 +24,36 @@ async function verifyGoogleToken(idToken) {
   return payload;
 }
 
+// 2. FUNGSI BARU BUAT PANGGIL GROQ + ROTASI
+async function callGroq(messages) {
+  const apiKey = GROQ_API_KEYS[currentKeyIndex];
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + apiKey, // pake key yg aktif
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: messages,
+      stream: true,
+      max_tokens: 2000,
+    }),
+  });
+
+  // KALAU KENA LIMIT 429, GANTI KEY & COBA LAGI
+  if (response.status === 429) {
+    console.log(`Key ${currentKeyIndex + 1} kena limit. Pindah ke key ${currentKeyIndex + 2}`);
+    currentKeyIndex = (currentKeyIndex + 1) % GROQ_API_KEYS.length;
+    return callGroq(messages); // retry
+  }
+
+  return response;
+}
+
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
+  if (req.method!== "POST") {
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
@@ -42,20 +76,20 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { messages, conversationId } = req.body || {}; // [MEMORY]
+  const { messages, conversationId } = req.body || {};
   if (!Array.isArray(messages) || messages.length === 0) {
     res.status(400).json({ error: "Pesan kosong atau format salah." });
     return;
   }
   const cleanMessages = messages
-    .filter(
+   .filter(
       (m) =>
         m &&
         ["user", "assistant"].includes(m.role) &&
         typeof m.content === "string" &&
-        m.content.trim() !== ""
+        m.content.trim()!== ""
     )
-    .map((m) => ({ role: m.role, content: m.content.trim() }));
+   .map((m) => ({ role: m.role, content: m.content.trim() }));
 
   if (cleanMessages.length === 0) {
     res.status(400).json({ error: "Tidak ada pesan yang valid." });
@@ -64,9 +98,7 @@ export default async function handler(req, res) {
 
   const lastUserMessage = [...cleanMessages].reverse().find((m) => m.role === "user");
 
-  // [MEMORY] Kalau client belum kirim conversationId (chat baru / tombol "New"),
-  // buat baris baru di tabel conversations dulu, judulnya dari pesan pertama.
-  let convId = conversationId ? Number(conversationId) : null;
+  let convId = conversationId? Number(conversationId) : null;
   if (!convId) {
     try {
       const title = makeTitleFromMessage(lastUserMessage?.content);
@@ -95,7 +127,7 @@ export default async function handler(req, res) {
         `Berikut yang kamu tahu tentang user ini:\n${memoryText}\n\n` +
         'Gunakan info ini secara natural kalau relevan. Jangan sebut-sebut kalau kamu "mengambil dari database" atau semacamnya.',
     },
-    ...cleanMessages,
+   ...cleanMessages,
   ];
 
   if (lastUserMessage) {
@@ -104,28 +136,17 @@ export default async function handler(req, res) {
     );
   }
 
+  // 3. PANGGIL FUNGSI BARU DI SINI
   let upstream;
   try {
-    upstream = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + GROQ_API_KEY,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: groqMessages,
-        stream: true,
-        max_tokens: 2000,
-      }),
-    });
+    upstream = await callGroq(groqMessages); // <--- UDAH DIGANTI
   } catch (err) {
     console.error("Groq connection error:", err);
     res.status(502).json({ error: "Tidak dapat menghubungi layanan AI." });
     return;
   }
 
-  if (!upstream.ok || !upstream.body) {
+  if (!upstream.ok ||!upstream.body) {
     const errorText = await upstream.text().catch(() => "");
     console.error("Groq API Error:", upstream.status, errorText);
     let message = "Gagal mendapatkan respons dari AI.";
@@ -141,7 +162,7 @@ export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
-  res.setHeader("X-Conversation-Id", String(convId)); // [MEMORY] biar frontend tahu ID percakapan ini
+  res.setHeader("X-Conversation-Id", String(convId));
   if (res.flushHeaders) res.flushHeaders();
 
   const reader = upstream.body.getReader();
@@ -154,7 +175,7 @@ export default async function handler(req, res) {
   function processSSEChunk(chunkText) {
     sseBuffer += chunkText;
     const lines = sseBuffer.split("\n");
-    sseBuffer = lines.pop() ?? "";
+    sseBuffer = lines.pop()?? "";
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed.startsWith("data:")) continue;
