@@ -170,6 +170,8 @@
   .sidebar-chat-item:hover{background:var(--surface-2); color:var(--text);}
   .sidebar-chat-item.active{background:var(--accent-dim); color:var(--text);}
   .sidebar-chat-item svg{width:14px; height:14px; flex-shrink:0; opacity:0.8;}
+  .sidebar-chat-item span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .sidebar-empty-note{font-size:0.78rem; color:var(--text-muted); padding:8px 10px; line-height:1.5;}
 
   #sidebar-backdrop{display:none;}
 
@@ -435,10 +437,7 @@
         New
       </button>
       <div class="sidebar-section-label">Chats and tasks</div>
-      <button class="sidebar-chat-item active" id="sidebar-history-item" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
-        <span>Percakapanmu dengan Tanya</span>
-      </button>
+      <div id="sidebar-chat-list"></div>
     </aside>
 
     <div id="chat-main">
@@ -507,7 +506,8 @@ const TEXTLIKE_EXT = ['.txt', '.md', '.csv', '.json', '.log'];
 let history = [];
 let userProfile = null;
 let pendingAttachment = null; // [UPLOAD] { kind:'image'|'text', name, size, dataUrl?, text? }
-let historyLoaded = false; // [MEMORY] biar riwayat cuma di-fetch sekali per sesi login
+let conversationsList = []; // [CONV] daftar semua percakapan user, buat sidebar
+let currentConversationId = null; // [CONV] percakapan yang sedang aktif (null = belum ada/baru)
 
 function decodeJwt(token){
   const payload = token.split('.')[1];
@@ -535,7 +535,7 @@ function handleCredentialResponse(response){
   userProfile = decodeJwt(response.credential);
   localStorage.setItem('id_token', response.credential); // [AUTO-LOGIN] localStorage, bukan sessionStorage
   showChatScreen();
-  loadChatHistory(); // [MEMORY]
+  loadConversations(true); // [CONV]
   document.getElementById('chat-input').focus();
 }
 
@@ -556,7 +556,7 @@ window.onload = function(){
     if(savedToken && !isTokenExpired(savedToken)){
       userProfile = decodeJwt(savedToken);
       showChatScreen();
-      loadChatHistory(); // [MEMORY]
+      loadConversations(true); // [CONV]
     } else {
       // [AUTO-LOGIN] Token tidak ada / sudah expired. Coba silent re-auth dulu
       // (Google One Tap) sebelum menampilkan layar login manual.
@@ -574,7 +574,8 @@ document.getElementById('signout-btn').addEventListener('click', () => {
   document.getElementById('chat-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   history = [];
-  historyLoaded = false; // [MEMORY] reset supaya akun lain tidak kebawa riwayat akun sebelumnya
+  conversationsList = []; // [CONV]
+  currentConversationId = null; // [CONV]
   clearAttachment(); // [UPLOAD]
   document.getElementById('messages').innerHTML = emptyStateHTML;
   closeSidebar(); // [SIDEBAR]
@@ -602,7 +603,7 @@ const sidebarEl = document.getElementById('sidebar');
 const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
 const sidebarBackdrop = document.getElementById('sidebar-backdrop');
 const newChatBtn = document.getElementById('new-chat-btn');
-const sidebarHistoryItem = document.getElementById('sidebar-history-item');
+const sidebarChatListEl = document.getElementById('sidebar-chat-list');
 
 function openSidebar(){
   sidebarEl.classList.add('open');
@@ -617,24 +618,80 @@ sidebarToggleBtn.addEventListener('click', () => {
 });
 sidebarBackdrop.addEventListener('click', closeSidebar);
 
-// [SIDEBAR] "New" mengosongkan tampilan chat + konteks in-memory (bukan menghapus
-// riwayat di database — riwayat lama tetap ada dan akan muncul lagi kalau halaman
-// di-refresh, karena masih satu tabel chat_history yang sama per user).
+// [CONV] Ambil SEMUA percakapan milik user, dirender jadi daftar di sidebar.
+// selectFirst=true dipanggil sekali saat login/refresh, buat otomatis
+// membuka percakapan paling baru (kalau ada).
+async function loadConversations(selectFirst){
+  const idToken = localStorage.getItem('id_token');
+  if(!idToken) return;
+
+  try{
+    const response = await fetch('/api/conversations', {
+      headers: { 'Authorization': 'Bearer ' + idToken }
+    });
+    if(!response.ok) return;
+
+    const data = await response.json();
+    conversationsList = Array.isArray(data.conversations) ? data.conversations : [];
+    renderConversationList();
+
+    if(selectFirst && conversationsList.length > 0 && currentConversationId === null){
+      await selectConversation(conversationsList[0].id);
+    }
+  }catch(e){
+    console.error('Gagal memuat daftar percakapan:', e);
+  }
+}
+
+// [CONV] Render ulang daftar percakapan di sidebar (dipanggil tiap ada
+// perubahan: load awal, percakapan baru dibuat, atau ganti percakapan aktif).
+function renderConversationList(){
+  sidebarChatListEl.innerHTML = '';
+
+  if(conversationsList.length === 0){
+    const note = document.createElement('div');
+    note.className = 'sidebar-empty-note';
+    note.textContent = 'Belum ada percakapan. Mulai ngobrol untuk membuat yang pertama.';
+    sidebarChatListEl.appendChild(note);
+    return;
+  }
+
+  for(const conv of conversationsList){
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sidebar-chat-item' + (conv.id === currentConversationId ? ' active' : '');
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><span></span>';
+    btn.querySelector('span').textContent = conv.title || 'Percakapan';
+    btn.addEventListener('click', () => selectConversation(conv.id));
+    sidebarChatListEl.appendChild(btn);
+  }
+}
+
+// [CONV] Pindah ke percakapan lain: kosongkan tampilan + history in-memory,
+// lalu muat ulang pesan-pesan milik percakapan yang dipilih.
+async function selectConversation(conversationId){
+  if(conversationId === currentConversationId){ closeSidebar(); return; }
+
+  currentConversationId = conversationId;
+  renderConversationList();
+  history = [];
+  document.getElementById('messages').innerHTML = emptyStateHTML;
+  await loadChatHistory(conversationId);
+  closeSidebar();
+}
+
+// [SIDEBAR] "New" mengosongkan tampilan & melepas percakapan aktif.
+// Percakapan baru beneran baru dibuat di server begitu pesan pertama dikirim
+// (lihat sendMessage) — supaya sidebar tidak kebanjiran percakapan kosong.
 newChatBtn.addEventListener('click', () => {
   if(history.length > 0 && !confirm('Mulai percakapan baru? Tampilan chat saat ini akan dikosongkan.')) return;
+  currentConversationId = null;
   history = [];
-  historyLoaded = true; // [MEMORY] cegah riwayat lama otomatis kemuat ulang di sesi ini
   clearAttachment();
   document.getElementById('messages').innerHTML = emptyStateHTML;
+  renderConversationList();
   closeSidebar();
   input.focus();
-});
-
-// [SIDEBAR] item ini mewakili satu-satunya riwayat yang ada — klik cukup
-// gulir ke pesan terbaru & tutup sidebar (di mobile), tidak ganti konteks apa pun.
-sidebarHistoryItem.addEventListener('click', () => {
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-  closeSidebar();
 });
 
 document.getElementById('messages').addEventListener('click', (e) => {
@@ -925,23 +982,21 @@ function addRow(role, attachment, timestamp){
   return bubble;
 }
 
-// [MEMORY] Ambil riwayat percakapan dari /api/memories dan render ke #messages
-// begitu layar chat dibuka. Kalau gagal (network error / belum ada riwayat),
-// chat tetap jalan normal seperti biasa — cukup mulai dari kosong.
-async function loadChatHistory(){
-  if(historyLoaded) return;
+// [MEMORY] Ambil pesan-pesan milik SATU percakapan dari /api/memories dan render
+// ke #messages. Dipanggil oleh selectConversation() saat pindah percakapan.
+async function loadChatHistory(conversationId){
   const idToken = localStorage.getItem('id_token');
-  if(!idToken) return;
+  if(!idToken || !conversationId) return;
 
   try{
-    const response = await fetch('/api/memories', {
+    const response = await fetch('/api/memories?conversationId=' + encodeURIComponent(conversationId), {
       headers: { 'Authorization': 'Bearer ' + idToken }
     });
     if(!response.ok) return;
 
     const data = await response.json();
     const chatHistory = Array.isArray(data.chatHistory) ? data.chatHistory : [];
-    if(chatHistory.length === 0){ historyLoaded = true; return; }
+    if(chatHistory.length === 0) return;
 
     const empty = document.getElementById('empty-state');
     if(empty) empty.remove();
@@ -965,7 +1020,6 @@ async function loadChatHistory(){
     }
 
     messagesEl.scrollTop = messagesEl.scrollHeight;
-    historyLoaded = true;
   }catch(e){
     console.error('Gagal memuat riwayat percakapan:', e);
   }
@@ -1039,6 +1093,7 @@ async function sendMessage(){
   aiBubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
 
   let fullText = '';
+  const isNewConversation = currentConversationId === null; // [CONV]
   try{
     const response = await fetch("/api/chat", {
       method: "POST",
@@ -1047,9 +1102,17 @@ async function sendMessage(){
         "Authorization": "Bearer " + idToken
       },
       body: JSON.stringify({
-        messages: history
+        messages: history,
+        conversationId: currentConversationId // [CONV]
       })
     });
+
+    // [CONV] Server balas ID percakapan lewat header, baik itu percakapan
+    // baru yang baru dibuat atau percakapan lama yang sedang dilanjutkan.
+    const convIdHeader = response.headers.get('X-Conversation-Id');
+    if(convIdHeader){
+      currentConversationId = Number(convIdHeader);
+    }
 
     if(response.status === 401){
       aiBubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
@@ -1118,6 +1181,12 @@ async function sendMessage(){
       history.push({ role: 'assistant', content: fullText });
     } else if(!started){
       aiBubble.textContent = 'Tidak ada balasan diterima. Coba lagi.';
+    }
+
+    // [CONV] Kalau ini percakapan baru, muat ulang daftar sidebar supaya
+    // item barunya (dengan judul dari pesan pertama) langsung muncul.
+    if(isNewConversation && currentConversationId !== null){
+      loadConversations(false);
     }
   }catch(e){
     aiBubble.textContent = 'Tidak bisa terhubung ke AI. Periksa koneksi lalu coba lagi.';
