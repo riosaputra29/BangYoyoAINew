@@ -183,6 +183,17 @@
   @keyframes blink{0%,80%,100%{opacity:0.25;} 40%{opacity:1;}}
   @media (prefers-reduced-motion: reduce){ .typing-dots span{animation:none; opacity:0.6;} }
 
+  /* [UPLOAD] gambar & chip file di dalam bubble pesan */
+  .msg-image{
+    max-width:260px; max-height:260px; width:100%; object-fit:cover;
+    border-radius:10px; border:1px solid var(--border); display:block; margin-bottom:8px; cursor:zoom-in;
+  }
+  .msg-file-chip{
+    display:inline-flex; align-items:center; gap:7px; background:var(--surface-2); border:1px solid var(--border);
+    padding:6px 11px; border-radius:8px; font-size:0.8rem; color:var(--text-muted); margin-bottom:8px;
+  }
+  .msg-file-chip svg{width:13px; height:13px; flex-shrink:0;}
+
   #empty-state{
     margin:auto; text-align:center; max-width:400px; padding:0 24px;
     display:flex; flex-direction:column; align-items:center; gap:18px;
@@ -223,9 +234,30 @@
 
   #composer-wrap{border-top:1px solid var(--border); flex-shrink:0; padding:16px 28px 20px;
     padding-bottom:calc(20px + env(safe-area-inset-bottom));}
+
+  /* [UPLOAD] kartu pratinjau lampiran sebelum dikirim */
+  #attachment-preview{
+    display:none; align-items:center; gap:10px; max-width:720px; margin:0 auto 10px;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:8px 10px;
+  }
+  #attachment-preview.visible{display:flex;}
+  #attachment-preview img{width:40px; height:40px; border-radius:8px; object-fit:cover; border:1px solid var(--border); flex-shrink:0;}
+  #attachment-preview .file-icon{
+    width:40px; height:40px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2);
+    display:flex; align-items:center; justify-content:center; color:var(--text-muted); flex-shrink:0;
+  }
+  #attachment-preview .file-icon svg{width:18px; height:18px;}
+  #attachment-preview .att-info{flex:1; min-width:0;}
+  #attachment-preview .att-name{font-size:0.82rem; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  #attachment-preview .att-size{font-size:0.72rem; color:var(--text-muted);}
+  #attachment-preview .att-remove{
+    background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1rem; padding:4px 8px; flex-shrink:0;
+  }
+  #attachment-preview .att-remove:hover{color:#e08a8a;}
+
   #composer{
-    display:flex; gap:10px; max-width:720px; margin:0 auto;
-    background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:9px 9px 9px 18px;
+    display:flex; gap:8px; max-width:720px; margin:0 auto;
+    background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:9px 9px 9px 9px;
     transition:border-color .15s ease, box-shadow .15s ease;
   }
   #composer:focus-within{
@@ -233,13 +265,23 @@
   }
   #composer textarea{
     flex:1; resize:none; background:none; border:none; color:var(--text);
-    font-size:0.945rem; line-height:1.6; letter-spacing:0.005em; max-height:140px; padding:9px 0;
+    font-size:0.945rem; line-height:1.6; letter-spacing:0.005em; max-height:140px; padding:9px 0 9px 9px;
   }
   #composer textarea::placeholder{color:var(--text-muted);}
   #composer textarea:focus{outline:none;}
+
+  /* [UPLOAD] tombol lampirkan file */
+  .attach-btn{
+    background:none; border:1px solid var(--border); color:var(--text-muted);
+    width:36px; height:36px; border-radius:9px; cursor:pointer; align-self:flex-end; margin-bottom:0;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .attach-btn:hover{border-color:var(--accent); color:var(--text);}
+  .attach-btn svg{width:16px; height:16px;}
+
   #send-btn{
     background:var(--accent); border:none; color:var(--accent-ink); padding:0 18px; border-radius:9px;
-    font-weight:600; font-size:0.85rem; cursor:pointer; align-self:flex-end; margin-bottom:5px; height:36px;
+    font-weight:600; font-size:0.85rem; cursor:pointer; align-self:flex-end; margin-bottom:0; height:36px;
     display:flex; align-items:center; gap:6px;
   }
   #send-btn:hover:not(:disabled){background:#dbaf62;}
@@ -297,7 +339,7 @@
     <div id="empty-state">
       <div class="mark">T</div>
       <div class="lead">Mau mulai dari mana?</div>
-      <p class="sub">Tulis pesan bebas, atau coba salah satu di bawah ini.</p>
+      <p class="sub">Tulis pesan bebas, lampirkan gambar/file, atau coba salah satu di bawah ini.</p>
       <div class="chip-row">
         <button class="chip" data-prompt="Ringkas topik yang rumit jadi bahasa sederhana">Ringkas topik rumit</button>
         <button class="chip" data-prompt="Bantu saya menyusun draf email profesional">Bantu tulis email</button>
@@ -308,7 +350,24 @@
   <button id="scroll-bottom">↓ Pesan terbaru</button>
 
   <div id="composer-wrap">
+    <!-- [UPLOAD] pratinjau lampiran -->
+    <div id="attachment-preview">
+      <img id="att-img-preview" style="display:none" alt="Pratinjau gambar">
+      <div class="file-icon" id="att-file-icon" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+      </div>
+      <div class="att-info">
+        <div class="att-name" id="att-name"></div>
+        <div class="att-size" id="att-size"></div>
+      </div>
+      <button class="att-remove" id="att-remove" title="Hapus lampiran">✕</button>
+    </div>
+
     <div id="composer">
+      <input type="file" id="file-input" accept="image/*,.txt,.md,.csv,.json,.log" hidden>
+      <button class="attach-btn" id="attach-btn" type="button" title="Lampirkan gambar atau file">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l9.19-9.19a3.5 3.5 0 014.95 4.95l-9.19 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+      </button>
       <textarea id="chat-input" rows="1" placeholder="Tulis pesan ke Tanya..."></textarea>
       <button id="send-btn">
         Kirim
@@ -323,11 +382,22 @@
 const GOOGLE_CLIENT_ID = "475879074184-5fu3p4oci9o3rbl8khtnv2260k6k7bc2.apps.googleusercontent.com";
 // Chat di halaman ini memanggil backend sendiri (/api/chat), BUKAN Groq langsung.
 // Backend yang menyimpan API key dengan aman dan meneruskan permintaan ke Groq.
+// [UPLOAD] Untuk gambar terkirim sebagai content part {type:"image_url", image_url:{url:dataURL}}
+// (format gaya OpenAI). Backend/model Groq yang dipakai harus vision-capable
+// (mis. model *-vision atau *-maverick) supaya bisa membaca gambar ini.
 
 const DUMMY_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%232c2f38'/%3E%3Ccircle cx='32' cy='25' r='12' fill='%238f929e'/%3E%3Cellipse cx='32' cy='58' rx='20' ry='16' fill='%238f929e'/%3E%3C/svg%3E";
 
+// [UPLOAD] batas ukuran file
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;   // 5 MB
+const MAX_TEXT_BYTES = 300 * 1024;         // 300 KB
+const MAX_TEXT_CHARS_IN_PROMPT = 20000;    // dipotong kalau lebih panjang dari ini
+
+const TEXTLIKE_EXT = ['.txt', '.md', '.csv', '.json', '.log'];
+
 let history = [];
 let userProfile = null;
+let pendingAttachment = null; // [UPLOAD] { kind:'image'|'text', name, size, dataUrl?, text? }
 
 function decodeJwt(token){
   const payload = token.split('.')[1];
@@ -392,6 +462,7 @@ document.getElementById('signout-btn').addEventListener('click', () => {
   document.getElementById('chat-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   history = [];
+  clearAttachment(); // [UPLOAD]
   document.getElementById('messages').innerHTML = emptyStateHTML;
 });
 
@@ -401,6 +472,16 @@ const messagesEl = document.getElementById('messages');
 const headerEl = document.querySelector('#chat-screen header');
 const scrollBtn = document.getElementById('scroll-bottom');
 const emptyStateHTML = document.getElementById('empty-state').outerHTML;
+
+// [UPLOAD] elemen-elemen lampiran
+const fileInput = document.getElementById('file-input');
+const attachBtn = document.getElementById('attach-btn');
+const attPreview = document.getElementById('attachment-preview');
+const attImgPreview = document.getElementById('att-img-preview');
+const attFileIcon = document.getElementById('att-file-icon');
+const attName = document.getElementById('att-name');
+const attSize = document.getElementById('att-size');
+const attRemove = document.getElementById('att-remove');
 
 document.getElementById('messages').addEventListener('click', (e) => {
   const chip = e.target.closest('.chip');
@@ -434,6 +515,102 @@ function copyText(text, btn){
 function timeNow(){
   return new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 }
+
+function formatBytes(bytes){
+  if(bytes < 1024) return bytes + ' B';
+  if(bytes < 1024*1024) return (bytes/1024).toFixed(0) + ' KB';
+  return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+// ==== [UPLOAD] Lampiran file/gambar ====
+
+attachBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  fileInput.value = ''; // reset supaya file yang sama bisa dipilih ulang nanti
+  if(!file) return;
+
+  const isImage = file.type.startsWith('image/');
+  const lowerName = file.name.toLowerCase();
+  const isTextLike = TEXTLIKE_EXT.some(ext => lowerName.endsWith(ext)) ||
+    file.type.startsWith('text/') || file.type === 'application/json';
+
+  if(!isImage && !isTextLike){
+    alert('Jenis file ini belum didukung. Gunakan gambar (JPG/PNG/dll) atau file teks (.txt, .md, .csv, .json, .log).');
+    return;
+  }
+
+  if(isImage && file.size > MAX_IMAGE_BYTES){
+    alert('Gambar terlalu besar (maks ' + formatBytes(MAX_IMAGE_BYTES) + ').');
+    return;
+  }
+  if(isTextLike && file.size > MAX_TEXT_BYTES){
+    alert('File terlalu besar (maks ' + formatBytes(MAX_TEXT_BYTES) + ').');
+    return;
+  }
+
+  const reader = new FileReader();
+
+  if(isImage){
+    reader.onload = () => {
+      pendingAttachment = {
+        kind: 'image',
+        name: file.name,
+        size: file.size,
+        dataUrl: reader.result
+      };
+      showAttachmentPreview();
+    };
+    reader.onerror = () => alert('Gagal membaca gambar.');
+    reader.readAsDataURL(file);
+  } else {
+    reader.onload = () => {
+      let text = reader.result;
+      let truncated = false;
+      if(text.length > MAX_TEXT_CHARS_IN_PROMPT){
+        text = text.slice(0, MAX_TEXT_CHARS_IN_PROMPT);
+        truncated = true;
+      }
+      pendingAttachment = {
+        kind: 'text',
+        name: file.name,
+        size: file.size,
+        text: text,
+        truncated: truncated
+      };
+      showAttachmentPreview();
+    };
+    reader.onerror = () => alert('Gagal membaca file.');
+    reader.readAsText(file);
+  }
+});
+
+function showAttachmentPreview(){
+  if(!pendingAttachment) return;
+  attPreview.classList.add('visible');
+  attName.textContent = pendingAttachment.name;
+  attSize.textContent = formatBytes(pendingAttachment.size);
+
+  if(pendingAttachment.kind === 'image'){
+    attImgPreview.src = pendingAttachment.dataUrl;
+    attImgPreview.style.display = 'block';
+    attFileIcon.style.display = 'none';
+  } else {
+    attImgPreview.style.display = 'none';
+    attFileIcon.style.display = 'flex';
+  }
+}
+
+function clearAttachment(){
+  pendingAttachment = null;
+  attPreview.classList.remove('visible');
+  attImgPreview.src = '';
+  attImgPreview.style.display = 'none';
+  attFileIcon.style.display = 'none';
+}
+
+attRemove.addEventListener('click', clearAttachment);
 
 // [MARKDOWN] Renderer ringan: escape HTML dulu (aman dari XSS), lalu ubah
 // **bold**, *italic*, `code`, dan list (- / 1.) jadi elemen HTML asli.
@@ -481,7 +658,8 @@ function renderMarkdown(raw){
   return html || '<p></p>';
 }
 
-function addRow(role){
+// [UPLOAD] role bisa diberi attachment opsional untuk ditampilkan di dalam bubble
+function addRow(role, attachment){
   const empty = document.getElementById('empty-state');
   if(empty) empty.remove();
 
@@ -504,6 +682,23 @@ function addRow(role){
   wrap.className = 'bubble-wrap';
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
+
+  // [UPLOAD] render lampiran di dalam bubble user
+  if(attachment && attachment.kind === 'image'){
+    const img = document.createElement('img');
+    img.className = 'msg-image';
+    img.src = attachment.dataUrl;
+    img.alt = attachment.name;
+    img.title = attachment.name;
+    bubble.appendChild(img);
+  } else if(attachment && attachment.kind === 'text'){
+    const chip = document.createElement('div');
+    chip.className = 'msg-file-chip';
+    chip.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><span></span>';
+    chip.querySelector('span').textContent = attachment.name;
+    bubble.appendChild(chip);
+  }
+
   wrap.appendChild(bubble);
 
   if(role === 'ai'){
@@ -552,7 +747,9 @@ function trySilentReauthThenRetry(onSuccess, onFail){
 
 async function sendMessage(){
   const text = input.value.trim();
-  if(!text) return;
+  const attachment = pendingAttachment; // [UPLOAD] snapshot lampiran saat ini
+
+  if(!text && !attachment) return; // butuh minimal teks atau lampiran
 
   const idToken = localStorage.getItem('id_token'); // [AUTO-LOGIN]
   if(!idToken){
@@ -564,10 +761,31 @@ async function sendMessage(){
 
   input.value = '';
   input.style.height = 'auto';
+  clearAttachment(); // [UPLOAD] bersihkan pratinjau segera setelah tombol kirim ditekan
   sendBtn.disabled = true;
 
-  addRow('user').textContent = text;
-  history.push({ role: 'user', content: text });
+  // [UPLOAD] tampilkan bubble user beserta lampiran (jika ada)
+  addRow('user', attachment).appendChild(
+    Object.assign(document.createElement('span'), { textContent: text })
+  );
+
+  // [UPLOAD] susun konten pesan yang dikirim ke API sesuai jenis lampiran
+  let messageContent;
+  if(attachment && attachment.kind === 'image'){
+    messageContent = [
+      { type: 'text', text: text || '(Lihat gambar terlampir)' },
+      { type: 'image_url', image_url: { url: attachment.dataUrl } }
+    ];
+  } else if(attachment && attachment.kind === 'text'){
+    const notice = attachment.truncated
+      ? '\n\n[File "' + attachment.name + '" dipotong karena terlalu panjang]\n---\n'
+      : '\n\n[Isi file "' + attachment.name + '"]\n---\n';
+    messageContent = (text ? text : 'Tolong lihat isi file berikut:') + notice + attachment.text;
+  } else {
+    messageContent = text;
+  }
+
+  history.push({ role: 'user', content: messageContent });
 
   const aiBubble = addRow('ai');
   aiBubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
