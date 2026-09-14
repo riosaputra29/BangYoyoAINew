@@ -12,7 +12,8 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 
 const GROQ_API_KEYS = [
   process.env.GROQ_KEY_1,
-  process.env.GROQ_KEY_2
+  process.env.GROQ_KEY_2,
+  process.env.GROQ_KEY_3,
 ].filter(Boolean);
 
 let currentKeyIndex = 0;
