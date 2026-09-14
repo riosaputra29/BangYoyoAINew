@@ -5774,9 +5774,20 @@ async function sendMessage(){
 
     }
 
+    // ============================================================
+    // CHAT LIMIT / RATE LIMIT
+    // ============================================================
+    if(response.status === 429){
+    
+      aiBubble.textContent =
+        'Limit Chat sudah habis. Silakan coba lagi beberapa saat lagi.';
+    
+      sendBtn.disabled = false;
+    
+      return;
+    }
 
     // 401
-
     if(
       response.status === 401
     ){
@@ -5847,17 +5858,30 @@ async function sendMessage(){
 
 
     // ERROR
-
     if(
       !response.ok ||
       !response.body
     ){
-
+    
+      let errorMessage =
+        'Maaf, AI sedang tidak bisa dihubungi. Silakan coba lagi beberapa saat lagi.';
+    
+      try{
+        const data =
+          await response.json();
+    
+        if(data && data.error){
+          errorMessage =
+            data.error;
+        }
+      }catch(e){}
+    
       aiBubble.textContent =
-        'Maaf, AI sedang tidak bisa dihubungi. Coba lagi sebentar lagi.';
-
+        errorMessage;
+    
+      sendBtn.disabled = false;
+    
       return;
-
     }
 
 
