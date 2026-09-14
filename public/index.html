@@ -2051,12 +2051,18 @@
 
 </section>
 
-<!-- PDF.js — dipakai untuk mengekstrak teks dari file PDF langsung di browser -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
+<!-- PDF.js — dipakai untuk mengekstrak teks dari file PDF langsung di browser.
+     Sengaja pakai versi 3.11.174: versi terakhir yang masih merilis build
+     "classic script" (pdf.min.js). Versi 4.x ke atas hanya merilis format
+     ES Module (.mjs), yang tidak otomatis membuat variabel global
+     `pdfjsLib` seperti yang dipakai kode di bawah. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
   if (window.pdfjsLib) {
     pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js";
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  } else {
+    console.error("pdf.js gagal dimuat dari CDN — fitur baca PDF tidak akan berfungsi.");
   }
 </script>
 
@@ -3383,8 +3389,13 @@ fileInput.addEventListener(
             err
           );
 
+          const notLoaded =
+            !window.pdfjsLib;
+
           alert(
-            'Gagal membaca isi PDF. Pastikan file tidak rusak atau terkunci password.'
+            notLoaded
+              ? 'Fitur baca PDF belum siap (pdf.js gagal dimuat dari CDN). Coba refresh halaman, atau periksa koneksi/adblocker.'
+              : 'Gagal membaca isi PDF. Pastikan file tidak rusak atau terkunci password.'
           );
 
         }
