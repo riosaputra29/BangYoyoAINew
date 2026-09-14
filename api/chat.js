@@ -43,7 +43,7 @@ const MAX_GROQ_RETRIES = Math.max(GROQ_API_KEYS.length, 1);
 // ============================================================
 
 // History lebih pendek = lebih hemat input token
-const MAX_HISTORY_MESSAGES_FOR_MODEL = 3;
+const MAX_HISTORY_MESSAGES_FOR_MODEL = 2;
 
 // Hanya dokumen terbaru dikirim penuh
 const MAX_DOCS_KEPT_FULL = 1;
@@ -52,7 +52,7 @@ const MAX_DOCS_KEPT_FULL = 1;
 const MAX_IMAGE_MSGS_KEPT_FULL = 1;
 
 // Memory dibatasi tapi naik dari 500 -> 1200 biar ga gampang lupa
-const MAX_MEMORY_CHARS_IN_PROMPT = 1200;
+const MAX_MEMORY_CHARS_IN_PROMPT = 500;
 
 // ============================================================
 // GOOGLE AUTH
