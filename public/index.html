@@ -1991,7 +1991,7 @@
           <input
             type="file"
             id="file-input"
-            accept="image/*,.txt,.md,.csv,.json,.log"
+            accept="image/*,.txt,.md,.csv,.json,.log,.pdf,application/pdf"
             hidden
           >
 
@@ -2051,6 +2051,14 @@
 
 </section>
 
+<!-- PDF.js — dipakai untuk mengekstrak teks dari file PDF langsung di browser -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
+<script>
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js";
+  }
+</script>
 
 <script>
 
@@ -2080,6 +2088,7 @@ const DUMMY_AVATAR =
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_BYTES = 300 * 1024;
+const MAX_PDF_BYTES = 15 * 1024 * 1024;
 const MAX_TEXT_CHARS_IN_PROMPT = 20000;
 
 const TEXTLIKE_EXT = [
@@ -3117,6 +3126,40 @@ function formatBytes(
 
 
 // =========================================================
+// EKSTRAK TEKS PDF (pdf.js)
+// =========================================================
+
+async function extractPdfText(arrayBuffer){
+
+  if(!window.pdfjsLib){
+    throw new Error('pdf.js belum termuat.');
+  }
+
+  const pdf =
+    await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+  let text = '';
+
+  for(let pageNum = 1; pageNum <= pdf.numPages; pageNum++){
+
+    const page = await pdf.getPage(pageNum);
+
+    const content = await page.getTextContent();
+
+    const pageText = content.items
+      .map(item => item.str)
+      .join(' ');
+
+    text += `\n--- Halaman ${pageNum} ---\n` + pageText;
+
+  }
+
+  return text.trim();
+
+}
+
+
+// =========================================================
 // UPLOAD
 // =========================================================
 
@@ -3149,6 +3192,11 @@ fileInput.addEventListener(
       file.name.toLowerCase();
 
 
+    const isPdf =
+      lowerName.endsWith('.pdf') ||
+      file.type === 'application/pdf';
+
+
     const isTextLike =
       TEXTLIKE_EXT.some(
         ext =>
@@ -3161,11 +3209,12 @@ fileInput.addEventListener(
 
     if(
       !isImage &&
-      !isTextLike
+      !isTextLike &&
+      !isPdf
     ){
 
       alert(
-        'Jenis file ini belum didukung. Gunakan gambar (JPG/PNG/dll) atau file teks (.txt, .md, .csv, .json, .log).'
+        'Jenis file ini belum didukung. Gunakan gambar (JPG/PNG/dll), PDF, atau file teks (.txt, .md, .csv, .json, .log).'
       );
 
       return;
@@ -3211,6 +3260,25 @@ fileInput.addEventListener(
     }
 
 
+    if(
+      isPdf &&
+      file.size >
+      MAX_PDF_BYTES
+    ){
+
+      alert(
+        'File PDF terlalu besar (maks ' +
+        formatBytes(
+          MAX_PDF_BYTES
+        ) +
+        ').'
+      );
+
+      return;
+
+    }
+
+
     const reader =
       new FileReader();
 
@@ -3245,6 +3313,93 @@ fileInput.addEventListener(
 
 
       reader.readAsDataURL(
+        file
+      );
+
+    }else if(isPdf){
+
+      reader.onload = async () => {
+
+        try{
+
+          const rawText =
+            await extractPdfText(
+              reader.result
+            );
+
+          let text = rawText;
+
+          let truncated = false;
+
+
+          if(
+            !text ||
+            text.trim() === ''
+          ){
+
+            text =
+              '[Tidak ada teks yang bisa diekstrak dari PDF ini. Kemungkinan PDF berupa hasil scan/gambar tanpa lapisan teks.]';
+
+          }
+
+
+          if(
+            text.length >
+            MAX_TEXT_CHARS_IN_PROMPT
+          ){
+
+            text =
+              text.slice(
+                0,
+                MAX_TEXT_CHARS_IN_PROMPT
+              );
+
+            truncated = true;
+
+          }
+
+
+          pendingAttachment = {
+
+            kind:'text',
+
+            name:file.name,
+
+            size:file.size,
+
+            text:text,
+
+            truncated:truncated
+
+          };
+
+
+          showAttachmentPreview();
+
+        }catch(err){
+
+          console.error(
+            'Gagal membaca PDF:',
+            err
+          );
+
+          alert(
+            'Gagal membaca isi PDF. Pastikan file tidak rusak atau terkunci password.'
+          );
+
+        }
+
+      };
+
+
+      reader.onerror =
+        () =>
+          alert(
+            'Gagal membaca file PDF.'
+          );
+
+
+      reader.readAsArrayBuffer(
         file
       );
 
