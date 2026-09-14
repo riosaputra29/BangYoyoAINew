@@ -1673,36 +1673,32 @@ export default async function handler(
 
 
     let message =
-      "Gagal mendapatkan respons dari AI.";
-
-
-    if (
-      upstream.status === 429
-    ) {
-
+    "Gagal mendapatkan respons dari AI.";
+  
+    if (upstream.status === 429) {
+    
       message =
-        "Server AI sedang sibuk atau quota API tercapai. Coba lagi nanti.";
-
+        "Limit Chat sudah habis. Silakan coba lagi beberapa saat lagi.";
+    
     } else {
-
+    
       try {
-
+    
         message =
           JSON.parse(
             errorText
           )?.error?.message ||
           message;
-
+    
       } catch {}
     }
-
-
+    
     res.status(
       upstream.status
     ).json({
       error: message
     });
-
+    
     return;
   }
 
