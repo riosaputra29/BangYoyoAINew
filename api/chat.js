@@ -29,6 +29,11 @@ const VISION_MODEL =
 // Batas dari Groq untuk request bermuatan gambar
 const MAX_IMAGES_PER_REQUEST = 5;
 
+// Batas maksimal percobaan rotasi API key saat kena rate limit (429).
+// Diset sama dengan jumlah key yang tersedia, minimal 1, supaya tidak
+// pernah retry tanpa henti walau hanya ada satu key.
+const MAX_GROQ_RETRIES = Math.max(GROQ_API_KEYS.length, 1);
+
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 
@@ -110,18 +115,41 @@ function capImagesPerRequest(messages, maxImages = MAX_IMAGES_PER_REQUEST) {
 
 
 // ============================================================
-// GROQ STREAM
+// HELPER: SLEEP (untuk backoff sebelum retry)
 // ============================================================
 
-async function callGroq(messages, modelId) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+
+// ============================================================
+// GROQ STREAM (dengan retry & backoff yang aman)
+// ============================================================
+//
+// Perbaikan dibanding versi sebelumnya:
+// 1. Retry dibatasi oleh MAX_GROQ_RETRIES — tidak akan rotasi key
+//    tanpa henti kalau semua key ternyata kena limit bersamaan.
+// 2. Tetap mencoba retry walau hanya ada 1 API key (sebelumnya kalau
+//    cuma 1 key, request 429 langsung diteruskan mentah tanpa retry
+//    sama sekali).
+// 3. Ada jeda (backoff) singkat sebelum mencoba key berikutnya,
+//    supaya tidak langsung membombardir Groq lagi.
+// 4. Kalau semua percobaan habis dan masih 429, response 429 asli
+//    dikembalikan ke caller (bukan dilempar sebagai exception tak
+//    terduga), supaya bisa ditangani rapi di handler().
+//
+function callGroq(messages, modelId, attempt = 0) {
 
   if (GROQ_API_KEYS.length === 0) {
-    throw new Error("GROQ API key belum dikonfigurasi.");
+    return Promise.reject(
+      new Error("GROQ API key belum dikonfigurasi.")
+    );
   }
 
   const apiKey = GROQ_API_KEYS[currentKeyIndex];
 
-  const response = await fetch(
+  return fetch(
     "https://api.groq.com/openai/v1/chat/completions",
     {
       method: "POST",
@@ -139,23 +167,37 @@ async function callGroq(messages, modelId) {
         temperature: 0.2,
       }),
     }
-  );
+  ).then(async (response) => {
 
+    // Rate limit -> coba rotasi key, tapi dibatasi jumlah percobaan
+    if (response.status === 429) {
 
-  // Rotasi API key ketika rate limit
-  if (response.status === 429 && GROQ_API_KEYS.length > 1) {
+      console.log(
+        `Groq key index ${currentKeyIndex} kena rate limit ` +
+        `(percobaan ${attempt + 1}/${MAX_GROQ_RETRIES}).`
+      );
 
-    console.log(
-      `Groq key ${currentKeyIndex + 1} terkena limit.`
-    );
+      // Sudah mencoba maksimal -> berhenti, jangan loop selamanya
+      if (attempt + 1 >= MAX_GROQ_RETRIES) {
 
-    currentKeyIndex =
-      (currentKeyIndex + 1) % GROQ_API_KEYS.length;
+        console.error(
+          "Semua Groq API key kena rate limit. Menghentikan retry."
+        );
 
-    return callGroq(messages, modelId);
-  }
+        return response; // kembalikan response 429 apa adanya ke caller
+      }
 
-  return response;
+      currentKeyIndex =
+        (currentKeyIndex + 1) % GROQ_API_KEYS.length;
+
+      // Backoff kecil sebelum coba key berikutnya
+      await sleep(300 * (attempt + 1));
+
+      return callGroq(messages, modelId, attempt + 1);
+    }
+
+    return response;
+  });
 }
 
 
@@ -819,15 +861,27 @@ export default async function handler(req, res) {
       "Gagal mendapatkan respons dari AI.";
 
 
-    try {
+    // Pesan khusus & lebih jelas untuk kasus rate limit (429),
+    // supaya user tahu ini bukan bug melainkan server AI sedang
+    // sibuk, dan bisa mencoba lagi sebentar lagi.
+    if (upstream.status === 429) {
 
       message =
-        JSON.parse(errorText)
-          ?.error
-          ?.message ||
-        message;
+        "Server AI sedang sibuk (rate limit tercapai). " +
+        "Coba lagi dalam beberapa saat.";
 
-    } catch {}
+    } else {
+
+      try {
+
+        message =
+          JSON.parse(errorText)
+            ?.error
+            ?.message ||
+          message;
+
+      } catch {}
+    }
 
 
     res.status(
