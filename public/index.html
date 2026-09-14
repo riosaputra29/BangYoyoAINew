@@ -1,6 +1,28 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
+  <script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [
+        ['$', '$'],
+        ['\\(', '\\)']
+      ],
+      displayMath: [
+        ['$$', '$$'],
+        ['\\[', '\\]']
+      ]
+    },
+    svg: {
+      fontCache: 'global'
+    }
+  };
+</script>
+
+<script
+  async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -65,6 +87,209 @@
     overflow:hidden;
     -webkit-font-smoothing:antialiased;
   }
+
+  /* =========================================================
+   MARKDOWN CHAT
+   ========================================================= */
+
+.bubble p {
+  margin: 0 0 12px;
+  line-height: 1.7;
+}
+
+.bubble p:last-child {
+  margin-bottom: 0;
+}
+
+
+/* HEADINGS */
+
+.bubble h1 {
+  font-size: 1.55rem;
+  line-height: 1.3;
+  font-weight: 750;
+  margin: 0 0 18px;
+}
+
+.bubble h2 {
+  font-size: 1.25rem;
+  line-height: 1.4;
+  font-weight: 700;
+  margin: 24px 0 10px;
+}
+
+.bubble h3 {
+  font-size: 1.1rem;
+  line-height: 1.45;
+  font-weight: 700;
+  margin: 20px 0 8px;
+}
+
+.bubble h4,
+.bubble h5,
+.bubble h6 {
+  font-weight: 700;
+  margin: 16px 0 8px;
+}
+
+
+/* LIST */
+
+.bubble ul,
+.bubble ol {
+  margin: 10px 0 14px;
+  padding-left: 26px;
+}
+
+.bubble li {
+  margin: 5px 0;
+  line-height: 1.65;
+}
+
+.bubble ol li::marker {
+  font-weight: 600;
+}
+
+
+/* TABLE */
+
+.md-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin: 16px 0;
+  border-radius: 10px;
+}
+
+.bubble table {
+  width: 100%;
+  min-width: 420px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.bubble th,
+.bubble td {
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+  border: 1px solid rgba(128,128,128,.25);
+}
+
+.bubble th {
+  font-weight: 700;
+}
+
+.bubble tr {
+  transition: background .15s ease;
+}
+
+
+/* CODE */
+
+.bubble pre {
+  margin: 14px 0;
+  padding: 14px;
+  overflow-x: auto;
+  border-radius: 10px;
+  line-height: 1.55;
+}
+
+.bubble code {
+  font-family:
+    "JetBrains Mono",
+    "Fira Code",
+    Consolas,
+    monospace;
+  font-size: .9em;
+}
+
+.bubble :not(pre) > code {
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+
+
+/* BLOCKQUOTE */
+
+.bubble blockquote {
+  margin: 14px 0;
+  padding: 10px 14px;
+  border-left: 3px solid currentColor;
+  opacity: .9;
+}
+
+
+/* HR */
+
+.bubble hr {
+  border: 0;
+  border-top: 1px solid rgba(128,128,128,.25);
+  margin: 20px 0;
+}
+
+
+/* IMAGE */
+
+.bubble img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+
+/* MATH */
+
+.bubble .math-block {
+  overflow-x: auto;
+  margin: 16px 0;
+  padding: 8px 0;
+}
+
+.bubble .math-block code {
+  background: transparent;
+  padding: 0;
+}
+
+
+/* STRONG */
+
+.bubble strong {
+  font-weight: 700;
+}
+
+
+/* LINKS */
+
+.bubble a {
+  text-decoration: underline;
+}
+
+
+/* MOBILE */
+
+@media (max-width: 700px){
+
+  .bubble h1 {
+    font-size: 1.35rem;
+  }
+
+  .bubble h2 {
+    font-size: 1.18rem;
+  }
+
+  .bubble h3 {
+    font-size: 1.05rem;
+  }
+
+  .bubble table {
+    min-width: 360px;
+  }
+
+  .bubble th,
+  .bubble td {
+    padding: 8px 9px;
+  }
+}
 
   ::selection{
     background:var(--accent-dim);
@@ -3936,77 +4161,184 @@ function buildCodeBlockHtml(
 
 
 // =========================================================
-// MARKDOWN
+// MARKDOWN RENDERER
 // =========================================================
 
-function renderMarkdown(
-  raw
-){
+function renderMarkdown(raw){
+
+  if(
+    raw === null ||
+    raw === undefined
+  ){
+    return '';
+  }
+
+  let source =
+    String(raw)
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+
+  // =======================================================
+  // NORMALIZE AI MARKDOWN
+  // =======================================================
+
+  // AI kadang menghasilkan:
+  // \## Judul
+  // \| A | B |
+  //
+  // Kembalikan ke Markdown normal.
+
+  source =
+    source.replace(
+      /^\\(#{1,6})\s/gm,
+      '$1 '
+    );
+
+  source =
+    source.replace(
+      /^\\\|/gm,
+      '|'
+    );
+
+  // Hanya perbaiki escaped pipe yang memang
+  // terlihat seperti tabel.
+  const sourceLines =
+    source.split('\n');
+
+  let inTable = false;
+
+  source =
+    sourceLines
+      .map(line => {
+
+        const trimmed =
+          line.trim();
+
+        if(
+          trimmed.startsWith('|')
+        ){
+          inTable = true;
+
+          return line.replace(
+            /\\\|/g,
+            '|'
+          );
+        }
+
+        if(
+          inTable &&
+          /^\s*\|?[\s:-]+(\|[\s:-]+)+\|?\s*$/
+            .test(trimmed)
+        ){
+          return line.replace(
+            /\\\|/g,
+            '|'
+          );
+        }
+
+        if(
+          trimmed === ''
+        ){
+          inTable = false;
+        }
+
+        return line;
+      })
+      .join('\n');
+
+
+  // =======================================================
+  // CODE BLOCK EXTRACTION
+  // =======================================================
 
   const codeBlocks = [];
 
+  source =
+    source.replace(
+      /```([a-zA-Z0-9_+#.-]*)[ \t]*\n?([\s\S]*?)```/g,
 
-  let source =
-    raw.replace(
-      /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g,
       (
         match,
         lang,
         code
       ) => {
 
-        const idx =
+        const index =
           codeBlocks.length;
 
-
         codeBlocks.push({
-
           lang:
-            lang.trim(),
+            (lang || '')
+              .trim()
+              .toLowerCase(),
 
           code:
             code.replace(
               /\n$/,
               ''
             )
-
         });
 
-
         return (
+          '\n' +
           '\u0000CODEBLOCK' +
-          idx +
-          '\u0000'
+          index +
+          '\u0000' +
+          '\n'
         );
-
       }
     );
 
 
-  let text =
-    escapeHtml(
-      source
-    );
+  // =======================================================
+  // ESCAPE HTML
+  // =======================================================
 
+  let text =
+    escapeHtml(source);
+
+
+  // =======================================================
+  // INLINE CODE
+  // =======================================================
 
   text =
     text.replace(
-      /`([^`]+)`/g,
+      /`([^`\n]+)`/g,
       '<code>$1</code>'
     );
 
 
+  // =======================================================
+  // BOLD
+  // =======================================================
+
   text =
     text.replace(
-      /\*\*([^*]+)\*\*/g,
+      /\*\*([^*\n]+)\*\*/g,
       '<strong>$1</strong>'
     );
 
 
+  // =======================================================
+  // ITALIC
+  // =======================================================
+
   text =
     text.replace(
-      /(^|[^*])\*([^*\n]+)\*(?!\*)/g,
+      /(^|[^\*])\*([^*\n]+)\*(?!\*)/g,
       '$1<em>$2</em>'
+    );
+
+
+  // =======================================================
+  // STRIKETHROUGH
+  // =======================================================
+
+  text =
+    text.replace(
+      /~~([^~\n]+)~~/g,
+      '<del>$1</del>'
     );
 
 
@@ -4016,71 +4348,228 @@ function renderMarkdown(
 
   let html = '';
 
-  let listType = null;
+  let listType =
+    null;
 
 
-  const closeList =
-    () => {
+  // =======================================================
+  // HELPERS
+  // =======================================================
 
-      if(listType){
+  function closeList(){
 
-        html +=
-          listType === 'ol'
-            ? '</ol>'
-            : '</ul>';
+    if(!listType){
+      return;
+    }
 
-        listType =
-          null;
+    html +=
+      listType === 'ol'
+        ? '</ol>'
+        : '</ul>';
 
+    listType =
+      null;
+  }
+
+
+  function isTableSeparator(line){
+
+    return /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/
+      .test(line);
+  }
+
+
+  function parseTableRow(line){
+
+    let value =
+      line.trim();
+
+    if(
+      value.startsWith('|')
+    ){
+      value =
+        value.slice(1);
+    }
+
+    if(
+      value.endsWith('|')
+    ){
+      value =
+        value.slice(
+          0,
+          -1
+        );
+    }
+
+    return value
+      .split('|')
+      .map(
+        cell =>
+          cell.trim()
+      );
+  }
+
+
+  function renderTable(
+    startIndex
+  ){
+
+    const header =
+      parseTableRow(
+        lines[startIndex]
+      );
+
+    const separator =
+      lines[startIndex + 1];
+
+    if(
+      !header.length ||
+      !isTableSeparator(
+        separator
+      )
+    ){
+      return null;
+    }
+
+    let end =
+      startIndex + 2;
+
+    const rows = [];
+
+    while(
+      end < lines.length
+    ){
+
+      const line =
+        lines[end];
+
+      if(
+        !line.trim() ||
+        !line.includes('|')
+      ){
+        break;
       }
 
-    };
+      rows.push(
+        parseTableRow(line)
+      );
 
+      end++;
+    }
+
+    let table =
+      '<div class="md-table-wrap">' +
+      '<table>' +
+      '<thead>' +
+      '<tr>';
+
+    header.forEach(
+      cell => {
+
+        table +=
+          '<th>' +
+          cell +
+          '</th>';
+      }
+    );
+
+    table +=
+      '</tr>' +
+      '</thead>' +
+      '<tbody>';
+
+
+    rows.forEach(
+      row => {
+
+        table +=
+          '<tr>';
+
+        for(
+          let i = 0;
+          i < header.length;
+          i++
+        ){
+
+          table +=
+            '<td>' +
+            (row[i] || '') +
+            '</td>';
+        }
+
+        table +=
+          '</tr>';
+      }
+    );
+
+
+    table +=
+      '</tbody>' +
+      '</table>' +
+      '</div>';
+
+
+    return {
+      html: table,
+      end
+    };
+  }
+
+
+  // =======================================================
+  // MAIN PARSER
+  // =======================================================
 
   for(
-    const line of lines
+    let i = 0;
+    i < lines.length;
+    i++
   ){
+
+    const line =
+      lines[i];
 
     const trimmed =
       line.trim();
 
 
-    const placeholderMatch =
-      trimmed.match(
-        /^\u0000CODEBLOCK(\d+)\u0000$/
-      );
-
-
-    const bullet =
-      trimmed.match(
-        /^[-*]\s+(.*)/
-      );
-
-
-    const numbered =
-      trimmed.match(
-        /^\d+\.\s+(.*)/
-      );
-
+    // -----------------------------------------------------
+    // EMPTY LINE
+    // -----------------------------------------------------
 
     if(
-      placeholderMatch
+      trimmed === ''
     ){
 
       closeList();
 
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // CODE BLOCK
+    // -----------------------------------------------------
+
+    const codeMatch =
+      trimmed.match(
+        /^\u0000CODEBLOCK(\d+)\u0000$/
+      );
+
+    if(codeMatch){
+
+      closeList();
 
       const block =
         codeBlocks[
           Number(
-            placeholderMatch[1]
+            codeMatch[1]
           )
         ];
 
-
       if(
-        block.lang &&
-        block.lang.toLowerCase() === 'excel'
+        block &&
+        block.lang === 'excel'
       ){
 
         html +=
@@ -4088,7 +4577,7 @@ function renderMarkdown(
             block.code
           );
 
-      }else{
+      }else if(block){
 
         html +=
           buildCodeBlockHtml(
@@ -4097,10 +4586,97 @@ function renderMarkdown(
               block.code
             )
           );
-
       }
 
-    }else if(bullet){
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // HEADING
+    // -----------------------------------------------------
+
+    const heading =
+      trimmed.match(
+        /^(#{1,6})\s+(.+)$/
+      );
+
+    if(heading){
+
+      closeList();
+
+      const level =
+        heading[1].length;
+
+      const content =
+        heading[2]
+          .trim();
+
+      html +=
+        `<h${level}>${content}</h${level}>`;
+
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // HORIZONTAL RULE
+    // -----------------------------------------------------
+
+    if(
+      /^(\*{3,}|-{3,}|_{3,})$/
+        .test(trimmed)
+    ){
+
+      closeList();
+
+      html +=
+        '<hr>';
+
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // TABLE
+    // -----------------------------------------------------
+
+    if(
+      line.includes('|') &&
+      i + 1 < lines.length &&
+      isTableSeparator(
+        lines[i + 1]
+      )
+    ){
+
+      closeList();
+
+      const table =
+        renderTable(i);
+
+      if(table){
+
+        html +=
+          table.html;
+
+        i =
+          table.end - 1;
+
+        continue;
+      }
+    }
+
+
+    // -----------------------------------------------------
+    // BULLET
+    // -----------------------------------------------------
+
+    const bullet =
+      trimmed.match(
+        /^[-*+]\s+(.+)$/
+      );
+
+    if(bullet){
 
       if(
         listType !== 'ul'
@@ -4108,19 +4684,32 @@ function renderMarkdown(
 
         closeList();
 
-        html += '<ul>';
+        html +=
+          '<ul>';
 
-        listType = 'ul';
-
+        listType =
+          'ul';
       }
-
 
       html +=
         '<li>' +
         bullet[1] +
         '</li>';
 
-    }else if(numbered){
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // NUMBERED LIST
+    // -----------------------------------------------------
+
+    const numbered =
+      trimmed.match(
+        /^\d+[.)]\s+(.+)$/
+      );
+
+    if(numbered){
 
       if(
         listType !== 'ol'
@@ -4128,48 +4717,113 @@ function renderMarkdown(
 
         closeList();
 
-        html += '<ol>';
+        html +=
+          '<ol>';
 
-        listType = 'ol';
-
+        listType =
+          'ol';
       }
-
 
       html +=
         '<li>' +
         numbered[1] +
         '</li>';
 
-    }else{
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // BLOCKQUOTE
+    // -----------------------------------------------------
+
+    const quote =
+      trimmed.match(
+        /^>\s?(.*)$/
+      );
+
+    if(quote){
 
       closeList();
 
+      html +=
+        '<blockquote>' +
+        quote[1] +
+        '</blockquote>';
 
-      if(
-        trimmed !== ''
-      ){
-
-        html +=
-          '<p>' +
-          line +
-          '</p>';
-
-      }
-
+      continue;
     }
 
+
+    // -----------------------------------------------------
+    // NORMAL PARAGRAPH
+    // -----------------------------------------------------
+
+    closeList();
+
+    html +=
+      '<p>' +
+      line +
+      '</p>';
   }
 
 
   closeList();
 
 
+  // =======================================================
+  // RESTORE LATEX
+  // =======================================================
+
+  html =
+    html.replace(
+      /\$\$([\s\S]*?)\$\$/g,
+      (
+        match,
+        formula
+      ) => {
+
+        return (
+          '<div class="math-block">' +
+          '<code>' +
+          escapeHtml(
+            formula.trim()
+          ) +
+          '</code>' +
+          '</div>'
+        );
+      }
+    );
+
+
+  html =
+    html.replace(
+      /\\\[([\s\S]*?)\\\]/g,
+      (
+        match,
+        formula
+      ) => {
+
+        return (
+          '<div class="math-block">' +
+          '<code>' +
+          escapeHtml(
+            formula.trim()
+          ) +
+          '</code>' +
+          '</div>'
+        );
+      }
+    );
+
+
   return (
     html ||
     '<p></p>'
   );
-
 }
+
+
 
 
 // =========================================================
@@ -5324,6 +5978,17 @@ async function sendMessage(){
               renderMarkdown(
                 fullText
               );
+
+            if(
+              window.MathJax &&
+              MathJax.typesetPromise
+            ){
+              MathJax.typesetPromise([
+                aiBubble
+              ]).catch(
+                console.error
+              );
+            }
 
 
             if(stayPinned){
