@@ -17,7 +17,17 @@ const GROQ_API_KEYS = [
 
 let currentKeyIndex = 0;
 
+// Model teks biasa (tidak bisa "melihat" gambar)
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+
+// Model multimodal (vision) dipakai otomatis kalau ada gambar dilampirkan.
+// Groq sering mengganti model vision yang tersedia — cek daftar terbaru di
+// https://console.groq.com/docs/vision sebelum deploy ke production.
+const VISION_MODEL =
+  process.env.GROQ_VISION_MODEL || "qwen/qwen3.6-27b";
+
+// Batas dari Groq untuk request bermuatan gambar
+const MAX_IMAGES_PER_REQUEST = 5;
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
@@ -43,10 +53,67 @@ async function verifyGoogleToken(idToken) {
 
 
 // ============================================================
+// DETEKSI GAMBAR PADA PESAN
+// ============================================================
+
+function messageHasImage(message) {
+
+  if (!message || !Array.isArray(message.content)) {
+    return false;
+  }
+
+  return message.content.some(
+    (part) => part && part.type === "image_url"
+  );
+}
+
+
+function messagesContainImage(messages) {
+
+  return messages.some((m) => messageHasImage(m));
+}
+
+
+// Groq membatasi maksimal 5 gambar per request. Kalau lebih,
+// potong dari yang paling lama supaya tidak ditolak dengan error 400.
+function capImagesPerRequest(messages, maxImages = MAX_IMAGES_PER_REQUEST) {
+
+  let imageCount = 0;
+
+  // Hitung mundur dari pesan terbaru supaya gambar yang baru
+  // dilampirkan user tetap diprioritaskan.
+  const reversed = [...messages].reverse();
+
+  const capped = reversed.map((m) => {
+
+    if (!Array.isArray(m.content)) {
+      return m;
+    }
+
+    const newContent = m.content.filter((part) => {
+
+      if (part && part.type === "image_url") {
+
+        imageCount += 1;
+
+        return imageCount <= maxImages;
+      }
+
+      return true;
+    });
+
+    return { ...m, content: newContent };
+  });
+
+  return capped.reverse();
+}
+
+
+// ============================================================
 // GROQ STREAM
 // ============================================================
 
-async function callGroq(messages) {
+async function callGroq(messages, modelId) {
 
   if (GROQ_API_KEYS.length === 0) {
     throw new Error("GROQ API key belum dikonfigurasi.");
@@ -65,7 +132,7 @@ async function callGroq(messages) {
       },
 
       body: JSON.stringify({
-        model: MODEL,
+        model: modelId,
         messages,
         stream: true,
         max_tokens: 4000,
@@ -85,7 +152,7 @@ async function callGroq(messages) {
     currentKeyIndex =
       (currentKeyIndex + 1) % GROQ_API_KEYS.length;
 
-    return callGroq(messages);
+    return callGroq(messages, modelId);
   }
 
   return response;
@@ -152,6 +219,7 @@ function containsDocument(content) {
     content.includes("[Isi file") ||
     content.includes("[File \"") ||
     content.includes("--- Sheet:") ||
+    content.includes("--- Halaman") ||
     content.includes("[Analisis file") ||
     content.includes("[Dokumen")
   );
@@ -218,7 +286,8 @@ ATURAN ANALISIS DOKUMEN:
    tersedia.
 8. Jika dokumen Excel mempunyai beberapa Sheet, perlakukan setiap
    Sheet sebagai dataset yang dapat dianalisis secara terpisah.
-9. Untuk PDF, gunakan isi seluruh dokumen yang diberikan.
+9. Untuk PDF, gunakan isi seluruh dokumen yang diberikan. Isi PDF
+   biasanya ditandai per halaman dengan format "--- Halaman N ---".
 10. Jika informasi tidak ditemukan, katakan bahwa informasi tersebut
     tidak ditemukan.
 11. Jangan mengatakan "saya tidak bisa membaca file" jika teks
@@ -229,6 +298,10 @@ ATURAN ANALISIS DOKUMEN:
 14. Jika ada kemungkinan kesalahan atau data kosong, sebutkan.
 15. Berikan hasil analisis secara terstruktur menggunakan tabel
     atau bullet jika cocok.
+16. Jika teks PDF kosong atau hanya berisi catatan bahwa PDF
+    kemungkinan hasil scan/gambar tanpa lapisan teks, katakan itu
+    ke user dan sarankan mengunggahnya sebagai gambar (foto/screenshot
+    halaman) supaya bisa dianalisis lewat model vision.
 
 Contoh pertanyaan yang harus bisa dijawab:
 
@@ -255,7 +328,7 @@ AKHIR INSTRUKSI DOKUMEN
 // MEMBUAT MESSAGE UNTUK AI
 // ============================================================
 
-function buildGroqMessages(cleanMessages, memoryText) {
+function buildGroqMessages(cleanMessages, memoryText, useVision) {
 
   const result = [];
 
@@ -270,13 +343,14 @@ Gunakan bahasa Indonesia kecuali user meminta bahasa lain.
 
 Kamu dapat membantu user menganalisis dokumen seperti:
 
-- PDF
+- PDF (termasuk PDF yang isinya sudah diekstrak menjadi teks)
 - Excel
 - CSV
 - TXT
 - Markdown
 - JSON
 - Word
+${useVision ? "- Gambar/foto yang dilampirkan user secara langsung" : ""}
 
 Berikut informasi memory user:
 
@@ -316,7 +390,13 @@ Jika user meminta analisis PDF, perhatikan:
 - nama
 - kesimpulan
 - informasi penting
-
+${useVision ? `
+Jika user melampirkan gambar, perhatikan dengan teliti seluruh
+detail visual yang relevan (teks dalam gambar/OCR, objek, orang,
+grafik, tabel, warna, tata letak) sebelum menjawab. Jika gambar
+berisi tulisan, transkrip dulu tulisannya sebelum menjawab
+pertanyaan yang berkaitan dengannya.
+` : ""}
 Jawaban harus langsung menjawab pertanyaan user.
 `
   });
@@ -498,7 +578,7 @@ export default async function handler(req, res) {
         } else {
 
           titleSource =
-            "Analisis file";
+            "Analisis gambar";
         }
       }
 
@@ -559,7 +639,7 @@ export default async function handler(req, res) {
 
 
   // ==========================================================
-  // DETEKSI DOKUMEN
+  // DETEKSI DOKUMEN & GAMBAR
   // ==========================================================
 
   let documentDetected = false;
@@ -577,10 +657,21 @@ export default async function handler(req, res) {
   }
 
 
+  const useVision = messagesContainImage(clean);
+
+
   if (documentDetected) {
 
     console.log(
       "Document analysis aktif untuk conversation:",
+      convId
+    );
+  }
+
+  if (useVision) {
+
+    console.log(
+      "Vision model dipakai untuk conversation:",
       convId
     );
   }
@@ -590,11 +681,20 @@ export default async function handler(req, res) {
   // MESSAGE KE GROQ
   // ==========================================================
 
-  const groqMessages =
+  let groqMessages =
     buildGroqMessages(
       clean,
-      memoryText
+      memoryText,
+      useVision
     );
+
+  // Batasi jumlah gambar sesuai limit Groq (maks 5/request)
+  if (useVision) {
+    groqMessages = capImagesPerRequest(groqMessages);
+  }
+
+  const modelToUse =
+    useVision ? VISION_MODEL : MODEL;
 
 
   // ==========================================================
@@ -645,7 +745,8 @@ export default async function handler(req, res) {
 
     upstream =
       await callGroq(
-        groqMessages
+        groqMessages,
+        modelToUse
       );
 
   } catch (err) {
