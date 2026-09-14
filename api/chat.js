@@ -29,7 +29,7 @@ const MAX_GROQ_RETRIES = Math.max(GROQ_API_KEYS.length, 1);
 const MAX_HISTORY_MESSAGES_FOR_MODEL = 2;
 const MAX_DOCS_KEPT_FULL = 1;
 const MAX_IMAGE_MSGS_KEPT_FULL = 1;
-const MAX_MEMORY_CHARS_IN_PROMPT = 500; // naikkin biar nama ga kepotong
+const MAX_MEMORY_CHARS_IN_PROMPT = 1000; // naikkin biar nama ga kepotong
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
