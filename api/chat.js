@@ -46,7 +46,7 @@ const MAX_GROQ_RETRIES =
 // ============================================================
 
 // History lebih pendek = lebih hemat input token
-const MAX_HISTORY_MESSAGES_FOR_MODEL = 5;
+const MAX_HISTORY_MESSAGES_FOR_MODEL = 2;
 
 // Hanya dokumen terbaru dikirim penuh
 const MAX_DOCS_KEPT_FULL = 1;
