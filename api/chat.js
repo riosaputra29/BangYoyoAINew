@@ -390,6 +390,35 @@ Jika user meminta analisis PDF, perhatikan:
 - nama
 - kesimpulan
 - informasi penting
+
+EXPORT KE EXCEL:
+
+Jika user secara eksplisit minta hasilnya dalam bentuk FILE EXCEL yang
+bisa diunduh/didownload (contoh: "buatkan file excel-nya", "export ke
+excel", "kasih dalam bentuk excel", "saya mau download hasilnya"),
+keluarkan data akhirnya sebagai SATU blok kode berbahasa "excel" berisi
+data terformat CSV, contoh:
+
+\`\`\`excel
+Nama,Jumlah,Tanggal
+Budi,120000,2026-01-05
+Siti,95000,2026-01-06
+\`\`\`
+
+Aturan blok "excel":
+- Baris pertama WAJIB header kolom.
+- Pisahkan nilai dengan koma. Kalau sebuah nilai mengandung koma,
+  bungkus nilai itu dengan tanda kutip ganda.
+- Isi blok ini HANYA data tabular murni (CSV). Jangan menyisipkan
+  kalimat penjelasan, catatan, atau markdown lain di dalam blok ini.
+- Taruh penjelasan/ringkasan singkat di LUAR blok (sebelum atau
+  sesudahnya), bukan di dalamnya.
+- Kalau ada beberapa tabel/kelompok data yang berbeda, buat beberapa
+  blok "excel" terpisah — masing-masing akan menjadi file Excel
+  terpisah yang bisa diunduh satu per satu.
+- JANGAN pakai blok "excel" untuk pertanyaan analisis biasa (mis.
+  "berapa totalnya?", "apa kesimpulannya?") — blok ini HANYA dipakai
+  kalau user memang eksplisit minta bentuk file/Excel/download.
 ${useVision ? `
 Jika user melampirkan gambar, perhatikan dengan teliti seluruh
 detail visual yang relevan (teks dalam gambar/OCR, objek, orang,
