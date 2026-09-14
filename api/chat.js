@@ -6,7 +6,7 @@ import {
   createConversation,
   makeTitleFromMessage
 } from "../lib/memory.js";
-import { extractAndSaveFacts } from "../lib/extract.js"; // <-- INI UDAH MULTI KEY
+import { extractAndSaveFacts } from "../lib/extract.js";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 
@@ -26,10 +26,10 @@ const MAX_IMAGES_PER_REQUEST = 5;
 const MAX_GROQ_RETRIES = Math.max(GROQ_API_KEYS.length, 1);
 
 // TOKEN SAVING
-const MAX_HISTORY_MESSAGES_FOR_MODEL = 2;
+const MAX_HISTORY_MESSAGES_FOR_MODEL = 2; // naikin dikit biar context ga ilang
 const MAX_DOCS_KEPT_FULL = 1;
 const MAX_IMAGE_MSGS_KEPT_FULL = 1;
-const MAX_MEMORY_CHARS_IN_PROMPT = 1000; // naikkin biar nama ga kepotong
+const MAX_MEMORY_CHARS_IN_PROMPT = 1000;
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
@@ -145,10 +145,22 @@ function buildGroqMessages(cleanMessages, memoryText, useVision) {
   const result = [];
   result.push({
     role: "system",
-    content: `Kamu adalah Tanya, asisten AI. Gunakan MEMORY USER untuk sapa user. Jangan tanya nama lagi kalau sudah ada di memory.
-BAHASA: Ikuti bahasa user.
+    content: `Kamu adalah Tanya, asisten AI yang cerdas, ramah, teliti, dan natural.
+ATURAN UTAMA: Utamakan akurasi. Jangan mengarang. Jika tidak tau, katakan.
+BAHASA: Gunakan Bahasa Indonesia default. Ikuti bahasa user.
+GAYA: Singkat kalau bisa. Gunakan heading, bullet, tabel bila perlu.
+MARKDOWN: Gunakan dengan valid.
+MATEMATIKA: Gunakan LaTeX $...$ atau $$...$$
+KODE: Jelaskan masalah -> penyebab -> kode benar -> perubahan.
+DOKUMEN: Gunakan sebagai sumber utama. Jangan karang.
+GAMBAR: ${useVision? "Analisis isi gambar yg terlihat. Jangan mengarang." : ""}
+
+ATURAN MEMORY YANG WAJIB:
+Jika di bawah ini ada "nama", maka WAJIB panggil user dengan nama itu di setiap jawaban. Jangan pernah tanya "siapa nama kamu" lagi.
+
 MEMORY USER:
-${memoryText}`
+${memoryText}
+EXPORT EXCEL: Hanya jika user minta file Excel. Kasih code block csv.`
   });
 
   for (const message of cleanMessages) {
@@ -167,112 +179,21 @@ export default async function handler(req, res) {
   if (req.method!== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const authHeader = req.headers.authorization || "";
-  if (!authHeader.startsWith("Bearer ")) return res.status(401).json({ error: "Belum login" });
+  if (!authHeader.startsWith("Bearer ")) return res.status(401).json({ error: "Belum login dengan Google." });
   const idToken = authHeader.substring(7).trim();
 
   let userId;
   try {
     const googleUser = await verifyGoogleToken(idToken);
+    console.log(`Google login: ${googleUser.email || "unknown"}`);
     userId = googleUser.sub;
   } catch (err) {
-    return res.status(401).json({ error: "Sesi Google tidak valid" });
+    console.error("Google verification error:", err.message);
+    return res.status(401).json({ error: "Sesi Google tidak valid atau sudah kedaluwarsa." });
   }
 
   const { messages, conversationId } = req.body || {};
-  if (!Array.isArray(messages) || messages.length === 0) return res.status(400).json({ error: "Pesan kosong" });
+  if (!Array.isArray(messages) || messages.length === 0) return res.status(400).json({ error: "Pesan kosong atau format salah." });
 
   const clean = cleanMessages(messages);
-  const lastUserMessage = [...clean].reverse().find((message) => message.role === "user");
-
-  let convId = conversationId? Number(conversationId) : null;
-  if (!convId) {
-    const title = lastUserMessage? makeTitleFromMessage(typeof lastUserMessage.content === "string"? lastUserMessage.content : "Analisis gambar") : "Percakapan baru";
-    const conv = await createConversation(userId, title);
-    convId = conv.id;
-  }
-
-  // 1. AMBIL MEMORY
-  let memoryText = "Belum ada memory tersimpan.";
-  try {
-    const memories = await getMemories(userId);
-    memoryText = formatMemoriesForPrompt(memories);
-    console.log(`Memory ditemukan: ${memories.length} item`);
-  } catch (err) { console.error("Gagal ambil memories:", err); }
-
-  if (memoryText.length > MAX_MEMORY_CHARS_IN_PROMPT) {
-    memoryText = memoryText.slice(0, MAX_MEMORY_CHARS_IN_PROMPT);
-    memoryText = memoryText.substring(0, memoryText.lastIndexOf("\n")) + "\n[Memory lama dipotong]";
-  }
-  console.log("Memory dikirim ke AI:", memoryText);
-
-  const useVision =!!lastUserMessage && messageHasImage(lastUserMessage);
-  const trimmedForModel = trimMessagesForModel(clean);
-  let groqMessages = buildGroqMessages(trimmedForModel, memoryText, useVision);
-  if (useVision) groqMessages = capImagesPerRequest(groqMessages);
-  const modelToUse = useVision? VISION_MODEL : MODEL;
-  const maxOutputTokens = useVision? 2000 : 1200;
-
-  // 2. SIMPAN PESAN USER
-  if (lastUserMessage) {
-    let savedContent = typeof lastUserMessage.content === "string"? lastUserMessage.content : "[Lampiran gambar]";
-    saveChatMessage(userId, convId, "user", savedContent).catch(console.error);
-  }
-
-  // 3. PANGGIL GROQ
-  let upstream;
-  try { upstream = await callGroq(groqMessages, modelToUse, maxOutputTokens); }
-  catch (err) { return res.status(502).json({ error: "Tidak dapat menghubungi AI" }); }
-
-  if (!upstream.ok ||!upstream.body) {
-    const errorText = await upstream.text().catch(() => "");
-    return res.status(upstream.status).json({ error: errorText || "Gagal respons AI" });
-  }
-
-  res.status(200);
-  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Conversation-Id", String(convId));
-  if (res.flushHeaders) res.flushHeaders();
-
-  const reader = upstream.body.getReader();
-  const decoder = new TextDecoder();
-  let sseBuffer = "";
-  let fullReply = "";
-
-  function processSSEChunk(chunkText) {
-    sseBuffer += chunkText;
-    const lines = sseBuffer.split("\n");
-    sseBuffer = lines.pop()?? "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const payload = trimmed.slice(5).trim();
-      if (payload === "[DONE]") continue;
-      try {
-        const json = JSON.parse(payload);
-        const delta = json?.choices?.[0]?.delta?.content;
-        if (typeof delta === "string") fullReply += delta;
-      } catch {}
-    }
-  }
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      res.write(value);
-      processSSEChunk(decoder.decode(value, { stream: true }));
-    }
-  } catch (err) { console.error("Streaming error:", err); }
-
-  // 4. SIMPAN ASSISTANT + EXTRAK MEMORY SEBELUM RES.END
-  if (fullReply.trim()) await saveChatMessage(userId, convId, "assistant", fullReply.trim());
-
-  if (lastUserMessage && typeof lastUserMessage.content === "string") {
-    console.log("Mulai ekstrak memory...");
-    await extractAndSaveFacts(userId, lastUserMessage.content); // <-- INI PINDAH KE ATAS
-  }
-
-  res.end(); // BARU END
-}
+  if (clean.length === 0) return res.status(400).
