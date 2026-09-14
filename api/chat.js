@@ -6,7 +6,7 @@ import {
   createConversation,
   makeTitleFromMessage
 } from "../lib/memory.js";
-import { extractAndSaveFacts } from "../lib/extract.js"; // <-- INI UDAH MULTI KEY
+import { extractAndSaveFacts } from "../lib/extract.js";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 
@@ -26,10 +26,10 @@ const MAX_IMAGES_PER_REQUEST = 5;
 const MAX_GROQ_RETRIES = Math.max(GROQ_API_KEYS.length, 1);
 
 // TOKEN SAVING
-const MAX_HISTORY_MESSAGES_FOR_MODEL = 2;
+const MAX_HISTORY_MESSAGES_FOR_MODEL = 4; // FIX: naikin dari 2 ke 4
 const MAX_DOCS_KEPT_FULL = 1;
 const MAX_IMAGE_MSGS_KEPT_FULL = 1;
-const MAX_MEMORY_CHARS_IN_PROMPT = 1000; // naikkin biar nama ga kepotong
+const MAX_MEMORY_CHARS_IN_PROMPT = 1200;
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
@@ -145,8 +145,14 @@ function buildGroqMessages(cleanMessages, memoryText, useVision) {
   const result = [];
   result.push({
     role: "system",
-    content: `Kamu adalah Tanya, asisten AI. Gunakan MEMORY USER untuk sapa user. Jangan tanya nama lagi kalau sudah ada di memory.
-BAHASA: Ikuti bahasa user.
+    content: `Kamu adalah Tanya, asisten AI yang ramah dan teliti.
+ATURAN UTAMA: Utamakan akurasi. Jangan mengarang.
+BAHASA: Gunakan Bahasa Indonesia default. Ikuti bahasa user.
+
+ATURAN MEMORY YANG WAJIB: // FIX
+Jika di bawah ada "nama: Budi", maka WAJIB panggil user "Budi" di setiap jawaban.
+Jangan pernah tanya "siapa nama kamu" lagi kalau sudah ada di memory.
+
 MEMORY USER:
 ${memoryText}`
   });
@@ -266,13 +272,13 @@ export default async function handler(req, res) {
     }
   } catch (err) { console.error("Streaming error:", err); }
 
-  // 4. SIMPAN ASSISTANT + EXTRAK MEMORY SEBELUM RES.END
+  // 4. SIMPAN ASSISTANT + EKSTRAK MEMORY SEBELUM RES.END
   if (fullReply.trim()) await saveChatMessage(userId, convId, "assistant", fullReply.trim());
 
   if (lastUserMessage && typeof lastUserMessage.content === "string") {
     console.log("Mulai ekstrak memory...");
-    await extractAndSaveFacts(userId, lastUserMessage.content); // <-- INI PINDAH KE ATAS
+    await extractAndSaveFacts(userId, lastUserMessage.content);
   }
 
-  res.end(); // BARU END
+  res.end();
 }
