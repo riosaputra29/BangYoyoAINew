@@ -4674,6 +4674,209 @@ function trySilentReauthThenRetry(
 
 
 // =========================================================
+// TRIM HISTORY SEBELUM DIKIRIM KE SERVER (HEMAT TOKEN)
+// =========================================================
+//
+// `history` lokal terus bertambah selama sesi chat berjalan, dan
+// sebelumnya SELURUH isinya (termasuk isi dokumen mentah & data
+// gambar base64 dari pesan-pesan lama) dikirim ulang ke /api/chat
+// di SETIAP pesan baru. Ini boros bandwidth & token Groq, karena
+// isi dokumen/gambar yang sudah pernah dianalisis ikut terkirim
+// ulang berkali-kali di setiap giliran chat berikutnya.
+//
+// Fungsi ini TIDAK mengubah `history` asli (supaya scrollback di
+// UI dan apa yang tersimpan secara lokal tetap utuh) — ia hanya
+// membuat salinan yang dipangkas untuk dikirim ke server. Backend
+// (/api/chat) juga sudah punya safety net serupa, tapi memangkas
+// di sini mengurangi ukuran request itu sendiri sebelum terkirim.
+
+const FRONTEND_MAX_HISTORY_FOR_SEND = 16;
+const FRONTEND_MAX_DOCS_FULL = 1;
+const FRONTEND_MAX_IMAGE_MSGS_FULL = 1;
+
+
+function historyMessageHasImage(msg){
+
+  return (
+    Array.isArray(msg.content) &&
+    msg.content.some(
+      p => p && p.type === 'image_url'
+    )
+  );
+
+}
+
+
+function historyMessageHasDocument(msg){
+
+  return (
+    typeof msg.content === 'string' &&
+    (
+      msg.content.includes('[Isi file') ||
+      msg.content.includes('[File "')
+    )
+  );
+
+}
+
+
+function trimHistoryForSend(
+  fullHistory
+){
+
+  const imageIdx = [];
+
+  const docIdx = [];
+
+
+  fullHistory.forEach(
+    (m, i) => {
+
+      if(
+        historyMessageHasImage(m)
+      ){
+        imageIdx.push(i);
+      }
+
+
+      if(
+        historyMessageHasDocument(m)
+      ){
+        docIdx.push(i);
+      }
+
+    }
+  );
+
+
+  const imageStrip =
+    new Set(
+      imageIdx.slice(
+        0,
+        Math.max(
+          0,
+          imageIdx.length -
+          FRONTEND_MAX_IMAGE_MSGS_FULL
+        )
+      )
+    );
+
+
+  const docStrip =
+    new Set(
+      docIdx.slice(
+        0,
+        Math.max(
+          0,
+          docIdx.length -
+          FRONTEND_MAX_DOCS_FULL
+        )
+      )
+    );
+
+
+  let trimmed =
+    fullHistory.map(
+      (m, i) => {
+
+        if(
+          imageStrip.has(i)
+        ){
+
+          const textPart =
+            Array.isArray(m.content)
+              ? m.content.find(
+                  p => p.type === 'text'
+                )
+              : null;
+
+
+          const label =
+            (
+              textPart &&
+              textPart.text
+            ) ||
+            '(Lihat gambar terlampir)';
+
+
+          return {
+
+            role:
+              m.role,
+
+            content:
+              label +
+              '\n\n[Catatan: gambar pada pesan ini sudah pernah ' +
+              'dianalisis sebelumnya di percakapan ini. Data gambar ' +
+              'tidak dikirim ulang untuk menghemat token.]'
+
+          };
+
+        }
+
+
+        if(
+          docStrip.has(i)
+        ){
+
+          const match =
+            m.content.match(
+              /\[Isi file "([^"]+)"\]/i
+            ) ||
+            m.content.match(
+              /\[File "([^"]+)"\]/i
+            );
+
+
+          const fileName =
+            match
+              ? match[1]
+              : 'dokumen';
+
+
+          return {
+
+            role:
+              m.role,
+
+            content:
+              `[Dokumen "${fileName}" sudah pernah diupload dan ` +
+              `dianalisis sebelumnya di percakapan ini. Isi ` +
+              `lengkapnya tidak dikirim ulang untuk menghemat ` +
+              `token. Jika perlu detail dari dokumen ini lagi, ` +
+              `minta user upload ulang.]`
+
+          };
+
+        }
+
+
+        return m;
+
+      }
+    );
+
+
+  if(
+    trimmed.length >
+    FRONTEND_MAX_HISTORY_FOR_SEND
+  ){
+
+    trimmed =
+      trimmed.slice(
+        trimmed.length -
+        FRONTEND_MAX_HISTORY_FOR_SEND
+      );
+
+  }
+
+
+  return trimmed;
+
+}
+
+
+// =========================================================
 // SEND MESSAGE
 // =========================================================
 
@@ -4887,7 +5090,9 @@ async function sendMessage(){
             JSON.stringify({
 
               messages:
-                history,
+                trimHistoryForSend(
+                  history
+                ),
 
               conversationId:
                 currentConversationId
