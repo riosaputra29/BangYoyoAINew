@@ -34,12 +34,48 @@ const MAX_IMAGES_PER_REQUEST = 5;
 // pernah retry tanpa henti walau hanya ada satu key.
 const MAX_GROQ_RETRIES = Math.max(GROQ_API_KEYS.length, 1);
 
-const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+// ============================================================
+// PENGHEMATAN TOKEN
+// ============================================================
+//
+// Sebelumnya, SELURUH history percakapan (termasuk isi dokumen
+// mentah & data gambar base64 dari pesan-pesan lama) dikirim ulang
+// ke Groq di SETIAP request. Ini boros token karena:
+//
+//  - Isi dokumen yang sudah pernah dianalisis ikut terkirim ulang
+//    setiap kali user chat lagi setelahnya.
+//  - Gambar lama (base64, bisa ratusan KB) ikut terkirim ulang
+//    selama masih di bawah limit 5 gambar/request.
+//  - Model vision (lebih mahal) tetap dipakai untuk SEMUA pesan
+//    berikutnya walau pesan terbaru user sama sekali tidak
+//    melampirkan gambar, hanya karena PERNAH ada gambar di history.
+//
+// Perbaikan di bawah ini menangani itu di sisi backend (sebagai
+// safety net, terlepas dari apa yang dikirim frontend):
+//
+//  1. useVision sekarang hanya true kalau PESAN USER TERAKHIR
+//     memuat gambar — bukan kalau history-nya PERNAH memuat gambar.
+//  2. trimMessagesForModel() mengganti isi dokumen & gambar pada
+//     pesan-pesan LAMA (bukan yang terbaru) dengan teks placeholder
+//     pendek, supaya tidak dikirim ulang penuh.
+//  3. Jumlah pesan yang dikirim ke model dibatasi (sliding window)
+//     supaya percakapan yang sangat panjang tidak terus membengkak.
+//
+// PENTING: ini hanya memengaruhi apa yang dikirim ke Groq. Riwayat
+// lengkap tetap tersimpan di database lewat saveChatMessage() seperti
+// biasa, jadi tidak ada data yang hilang dari sisi user.
+// ============================================================
+
+const MAX_HISTORY_MESSAGES_FOR_MODEL = 16; // ~8 giliran percakapan terakhir
+const MAX_DOCS_KEPT_FULL = 1;   // hanya dokumen PALING BARU yang dikirim utuh
+const MAX_IMAGE_MSGS_KEPT_FULL = 1; // hanya pesan gambar PALING BARU yang dikirim utuh
 
 
 // ============================================================
 // GOOGLE AUTH
 // ============================================================
+
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 async function verifyGoogleToken(idToken) {
   const ticket = await googleClient.verifyIdToken({
@@ -126,19 +162,6 @@ function sleep(ms) {
 // ============================================================
 // GROQ STREAM (dengan retry & backoff yang aman)
 // ============================================================
-//
-// Perbaikan dibanding versi sebelumnya:
-// 1. Retry dibatasi oleh MAX_GROQ_RETRIES — tidak akan rotasi key
-//    tanpa henti kalau semua key ternyata kena limit bersamaan.
-// 2. Tetap mencoba retry walau hanya ada 1 API key (sebelumnya kalau
-//    cuma 1 key, request 429 langsung diteruskan mentah tanpa retry
-//    sama sekali).
-// 3. Ada jeda (backoff) singkat sebelum mencoba key berikutnya,
-//    supaya tidak langsung membombardir Groq lagi.
-// 4. Kalau semua percobaan habis dan masih 429, response 429 asli
-//    dikembalikan ke caller (bukan dilempar sebagai exception tak
-//    terduga), supaya bisa ditangani rapi di handler().
-//
 function callGroq(messages, modelId, attempt = 0) {
 
   if (GROQ_API_KEYS.length === 0) {
@@ -363,6 +386,106 @@ Contoh pertanyaan yang harus bisa dijawab:
 AKHIR INSTRUKSI DOKUMEN
 ============================================================
 `;
+}
+
+
+// ============================================================
+// TRIM HISTORY UNTUK MODEL (PENGHEMATAN TOKEN)
+// ============================================================
+//
+// Mengganti dokumen & gambar pada pesan-pesan LAMA dengan
+// placeholder teks pendek, dan membatasi jumlah pesan yang
+// dikirim ke model lewat sliding window. Riwayat asli di DB
+// tidak tersentuh — ini hanya untuk payload yang dikirim ke Groq.
+//
+function trimMessagesForModel(messages) {
+
+  // 1. Cari index semua pesan yang memuat gambar
+  const imageIndices = [];
+
+  messages.forEach((m, i) => {
+    if (messageHasImage(m)) {
+      imageIndices.push(i);
+    }
+  });
+
+  const imageIndicesToStrip = new Set(
+    imageIndices.slice(
+      0,
+      Math.max(0, imageIndices.length - MAX_IMAGE_MSGS_KEPT_FULL)
+    )
+  );
+
+  // 2. Cari index semua pesan user yang memuat dokumen
+  const docIndices = [];
+
+  messages.forEach((m, i) => {
+    if (
+      typeof m.content === "string" &&
+      containsDocument(m.content)
+    ) {
+      docIndices.push(i);
+    }
+  });
+
+  const docIndicesToStrip = new Set(
+    docIndices.slice(
+      0,
+      Math.max(0, docIndices.length - MAX_DOCS_KEPT_FULL)
+    )
+  );
+
+  // 3. Bangun ulang pesan dengan placeholder untuk yang "lama"
+  let trimmed = messages.map((m, i) => {
+
+    if (imageIndicesToStrip.has(i)) {
+
+      const textPart = Array.isArray(m.content)
+        ? m.content.find((p) => p && p.type === "text")
+        : null;
+
+      const label =
+        textPart?.text?.trim() ||
+        "(Lihat gambar terlampir)";
+
+      return {
+        role: m.role,
+        content:
+          label +
+          "\n\n[Catatan: gambar pada pesan ini sudah pernah " +
+          "dianalisis sebelumnya di percakapan ini. Data gambar " +
+          "tidak dikirim ulang untuk menghemat token. Jika perlu " +
+          "dianalisis lagi, minta user melampirkan ulang.]"
+      };
+    }
+
+    if (docIndicesToStrip.has(i)) {
+
+      const fileName = getDocumentName(m.content);
+
+      return {
+        role: m.role,
+        content:
+          `[Dokumen "${fileName}" sudah pernah diupload dan ` +
+          `dianalisis sebelumnya di percakapan ini. Isi lengkapnya ` +
+          `tidak dikirim ulang untuk menghemat token. Jika user ` +
+          `bertanya lagi tentang detail spesifik dari dokumen ini ` +
+          `yang belum pernah dibahas, sarankan agar dokumennya ` +
+          `diupload ulang.]`
+      };
+    }
+
+    return m;
+  });
+
+  // 4. Sliding window: batasi jumlah pesan terkirim ke model
+  if (trimmed.length > MAX_HISTORY_MESSAGES_FOR_MODEL) {
+    trimmed = trimmed.slice(
+      trimmed.length - MAX_HISTORY_MESSAGES_FOR_MODEL
+    );
+  }
+
+  return trimmed;
 }
 
 
@@ -728,7 +851,15 @@ export default async function handler(req, res) {
   }
 
 
-  const useVision = messagesContainImage(clean);
+  // PENTING (fix boros token): vision model & data gambar HANYA
+  // dipakai kalau pesan user TERBARU memuat gambar — bukan kalau
+  // pernah ada gambar di suatu tempat dalam history. Sebelumnya
+  // useVision memakai messagesContainImage(clean) yang men-scan
+  // SELURUH history, sehingga model vision (lebih mahal) terus
+  // dipakai bahkan untuk pertanyaan teks biasa setelah gambar
+  // lama pernah dikirim.
+  const useVision =
+    !!lastUserMessage && messageHasImage(lastUserMessage);
 
 
   if (documentDetected) {
@@ -752,14 +883,20 @@ export default async function handler(req, res) {
   // MESSAGE KE GROQ
   // ==========================================================
 
+  // Trim dulu (ganti dokumen/gambar lama dengan placeholder +
+  // batasi jumlah pesan) sebelum dibangun jadi prompt Groq.
+  const trimmedForModel = trimMessagesForModel(clean);
+
   let groqMessages =
     buildGroqMessages(
-      clean,
+      trimmedForModel,
       memoryText,
       useVision
     );
 
-  // Batasi jumlah gambar sesuai limit Groq (maks 5/request)
+  // Safety net tambahan: batasi jumlah gambar sesuai limit Groq
+  // (maks 5/request). Setelah trimMessagesForModel di atas,
+  // biasanya paling banyak cuma ada gambar di 1 pesan saja.
   if (useVision) {
     groqMessages = capImagesPerRequest(groqMessages);
   }
@@ -861,9 +998,6 @@ export default async function handler(req, res) {
       "Gagal mendapatkan respons dari AI.";
 
 
-    // Pesan khusus & lebih jelas untuk kasus rate limit (429),
-    // supaya user tahu ini bukan bug melainkan server AI sedang
-    // sibuk, dan bisa mencoba lagi sebentar lagi.
     if (upstream.status === 429) {
 
       message =
