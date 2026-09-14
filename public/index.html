@@ -1039,6 +1039,92 @@
   }
 
   /* =========================================================
+     EXCEL DOWNLOAD BLOCK
+     ========================================================= */
+
+  .excel-block{
+    display:flex;
+    align-items:center;
+    gap:12px;
+
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:10px;
+
+    padding:12px 14px;
+    margin:10px 0;
+  }
+
+  .bubble .excel-block:first-child{
+    margin-top:0;
+  }
+
+  .bubble .excel-block:last-child{
+    margin-bottom:0;
+  }
+
+  .excel-block-icon{
+    width:36px;
+    height:36px;
+    flex-shrink:0;
+
+    border-radius:8px;
+    background:rgba(87,168,106,.14);
+    color:#6fbf7f;
+
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .excel-block-icon svg{
+    width:18px;
+    height:18px;
+  }
+
+  .excel-block-info{
+    flex:1;
+    min-width:0;
+  }
+
+  .excel-block-title{
+    font-size:.86rem;
+    font-weight:600;
+    color:var(--text);
+  }
+
+  .excel-block-sub{
+    font-size:.75rem;
+    color:var(--text-muted);
+    margin-top:2px;
+  }
+
+  .excel-download-btn{
+    flex-shrink:0;
+
+    background:var(--accent);
+    border:none;
+    color:var(--accent-ink);
+
+    padding:8px 14px;
+    border-radius:8px;
+
+    font-weight:600;
+    font-size:.8rem;
+
+    cursor:pointer;
+  }
+
+  .excel-download-btn:hover{
+    background:#dbaf62;
+  }
+
+  .excel-download-btn.error{
+    background:#e06c75;
+    color:#171410;
+  }
+
+  /* =========================================================
      EMPTY STATE
      ========================================================= */
 
@@ -1991,7 +2077,7 @@
           <input
             type="file"
             id="file-input"
-            accept="image/*,.txt,.md,.csv,.json,.log"
+            accept="image/*,.txt,.md,.csv,.json,.log,.pdf,application/pdf"
             hidden
           >
 
@@ -2051,6 +2137,29 @@
 
 </section>
 
+<!-- PDF.js — dipakai untuk mengekstrak teks dari file PDF langsung di browser.
+     Sengaja pakai versi 3.11.174: versi terakhir yang masih merilis build
+     "classic script" (pdf.min.js). Versi 4.x ke atas hanya merilis format
+     ES Module (.mjs), yang tidak otomatis membuat variabel global
+     `pdfjsLib` seperti yang dipakai kode di bawah. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  } else {
+    console.error("pdf.js gagal dimuat dari CDN — fitur baca PDF tidak akan berfungsi.");
+  }
+</script>
+
+<!-- SheetJS (xlsx) — dipakai untuk membuat file .xlsx yang bisa diunduh
+     langsung di browser dari data yang dihasilkan AI -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script>
+  if (!window.XLSX) {
+    console.error("SheetJS (xlsx) gagal dimuat dari CDN — fitur unduh Excel tidak akan berfungsi.");
+  }
+</script>
 
 <script>
 
@@ -2080,6 +2189,7 @@ const DUMMY_AVATAR =
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_BYTES = 300 * 1024;
+const MAX_PDF_BYTES = 15 * 1024 * 1024;
 const MAX_TEXT_CHARS_IN_PROMPT = 20000;
 
 const TEXTLIKE_EXT = [
@@ -2931,6 +3041,24 @@ document
       }
 
 
+      const excelBtn =
+        e.target.closest(
+          '.excel-download-btn'
+        );
+
+
+      if(excelBtn){
+
+        downloadExcelBlock(
+          excelBtn.dataset.xlsxId,
+          excelBtn
+        );
+
+        return;
+
+      }
+
+
       const codeCopyBtn =
         e.target.closest(
           '.code-copy-btn'
@@ -3117,6 +3245,40 @@ function formatBytes(
 
 
 // =========================================================
+// EKSTRAK TEKS PDF (pdf.js)
+// =========================================================
+
+async function extractPdfText(arrayBuffer){
+
+  if(!window.pdfjsLib){
+    throw new Error('pdf.js belum termuat.');
+  }
+
+  const pdf =
+    await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+  let text = '';
+
+  for(let pageNum = 1; pageNum <= pdf.numPages; pageNum++){
+
+    const page = await pdf.getPage(pageNum);
+
+    const content = await page.getTextContent();
+
+    const pageText = content.items
+      .map(item => item.str)
+      .join(' ');
+
+    text += `\n--- Halaman ${pageNum} ---\n` + pageText;
+
+  }
+
+  return text.trim();
+
+}
+
+
+// =========================================================
 // UPLOAD
 // =========================================================
 
@@ -3149,6 +3311,11 @@ fileInput.addEventListener(
       file.name.toLowerCase();
 
 
+    const isPdf =
+      lowerName.endsWith('.pdf') ||
+      file.type === 'application/pdf';
+
+
     const isTextLike =
       TEXTLIKE_EXT.some(
         ext =>
@@ -3161,11 +3328,12 @@ fileInput.addEventListener(
 
     if(
       !isImage &&
-      !isTextLike
+      !isTextLike &&
+      !isPdf
     ){
 
       alert(
-        'Jenis file ini belum didukung. Gunakan gambar (JPG/PNG/dll) atau file teks (.txt, .md, .csv, .json, .log).'
+        'Jenis file ini belum didukung. Gunakan gambar (JPG/PNG/dll), PDF, atau file teks (.txt, .md, .csv, .json, .log).'
       );
 
       return;
@@ -3211,6 +3379,25 @@ fileInput.addEventListener(
     }
 
 
+    if(
+      isPdf &&
+      file.size >
+      MAX_PDF_BYTES
+    ){
+
+      alert(
+        'File PDF terlalu besar (maks ' +
+        formatBytes(
+          MAX_PDF_BYTES
+        ) +
+        ').'
+      );
+
+      return;
+
+    }
+
+
     const reader =
       new FileReader();
 
@@ -3245,6 +3432,98 @@ fileInput.addEventListener(
 
 
       reader.readAsDataURL(
+        file
+      );
+
+    }else if(isPdf){
+
+      reader.onload = async () => {
+
+        try{
+
+          const rawText =
+            await extractPdfText(
+              reader.result
+            );
+
+          let text = rawText;
+
+          let truncated = false;
+
+
+          if(
+            !text ||
+            text.trim() === ''
+          ){
+
+            text =
+              '[Tidak ada teks yang bisa diekstrak dari PDF ini. Kemungkinan PDF berupa hasil scan/gambar tanpa lapisan teks.]';
+
+          }
+
+
+          if(
+            text.length >
+            MAX_TEXT_CHARS_IN_PROMPT
+          ){
+
+            text =
+              text.slice(
+                0,
+                MAX_TEXT_CHARS_IN_PROMPT
+              );
+
+            truncated = true;
+
+          }
+
+
+          pendingAttachment = {
+
+            kind:'text',
+
+            name:file.name,
+
+            size:file.size,
+
+            text:text,
+
+            truncated:truncated
+
+          };
+
+
+          showAttachmentPreview();
+
+        }catch(err){
+
+          console.error(
+            'Gagal membaca PDF:',
+            err
+          );
+
+          const notLoaded =
+            !window.pdfjsLib;
+
+          alert(
+            notLoaded
+              ? 'Fitur baca PDF belum siap (pdf.js gagal dimuat dari CDN). Coba refresh halaman, atau periksa koneksi/adblocker.'
+              : 'Gagal membaca isi PDF. Pastikan file tidak rusak atau terkunci password.'
+          );
+
+        }
+
+      };
+
+
+      reader.onerror =
+        () =>
+          alert(
+            'Gagal membaca file PDF.'
+          );
+
+
+      reader.readAsArrayBuffer(
         file
       );
 
@@ -3429,6 +3708,181 @@ const COPY_ICON_SVG =
   '<path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>' +
 
   '</svg>';
+
+
+// =========================================================
+// EXCEL ICON
+// =========================================================
+
+const EXCEL_ICON_SVG =
+
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+
+  '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>' +
+
+  '<path d="M14 2v6h6"/>' +
+
+  '<path d="M9.5 12.5l5 5M14.5 12.5l-5 5"/>' +
+
+  '</svg>';
+
+
+// =========================================================
+// EXCEL BLOCK REGISTRY
+// Menyimpan data CSV mentah per blok "excel" supaya bisa
+// diambil lagi saat tombol download diklik, tanpa perlu
+// menaruh data mentah di atribut HTML.
+// =========================================================
+
+let excelBlockCounter = 0;
+
+const excelBlockRegistry = {};
+
+
+function buildExcelBlockHtml(
+  csvCode
+){
+
+  const blockId =
+    'xlsx-' +
+    Date.now() +
+    '-' +
+    (excelBlockCounter++);
+
+
+  excelBlockRegistry[blockId] =
+    csvCode;
+
+
+  return (
+
+    '<div class="excel-block">' +
+
+      '<div class="excel-block-icon">' +
+
+        EXCEL_ICON_SVG +
+
+      '</div>' +
+
+      '<div class="excel-block-info">' +
+
+        '<div class="excel-block-title">Data Excel siap diunduh</div>' +
+
+        '<div class="excel-block-sub">Klik untuk mengunduh sebagai file .xlsx</div>' +
+
+      '</div>' +
+
+      '<button class="excel-download-btn" type="button" data-xlsx-id="' +
+
+        blockId +
+
+      '">Unduh Excel</button>' +
+
+    '</div>'
+
+  );
+
+}
+
+
+// =========================================================
+// TRIGGER DOWNLOAD EXCEL
+// =========================================================
+
+function downloadExcelBlock(
+  blockId,
+  btnEl
+){
+
+  const csvCode =
+    excelBlockRegistry[blockId];
+
+
+  if(!window.XLSX){
+
+    alert(
+      'Library Excel (SheetJS) belum termuat. Coba refresh halaman lalu coba lagi.'
+    );
+
+    return;
+
+  }
+
+
+  if(
+    typeof csvCode !== 'string' ||
+    csvCode.trim() === ''
+  ){
+
+    alert(
+      'Data untuk file Excel ini tidak ditemukan. Coba minta AI generate ulang.'
+    );
+
+    return;
+
+  }
+
+
+  try{
+
+    const workbook =
+      XLSX.read(
+        csvCode,
+        { type:'string' }
+      );
+
+    const filename =
+      'tanya-data-' +
+      Date.now() +
+      '.xlsx';
+
+    XLSX.writeFile(
+      workbook,
+      filename
+    );
+
+  }catch(err){
+
+    console.error(
+      'Gagal membuat file Excel:',
+      err
+    );
+
+    if(btnEl){
+
+      btnEl.classList.add(
+        'error'
+      );
+
+      btnEl.textContent =
+        'Gagal, coba lagi';
+
+
+      setTimeout(
+        () => {
+
+          btnEl.classList.remove(
+            'error'
+          );
+
+          btnEl.textContent =
+            'Unduh Excel';
+
+        },
+        2200
+      );
+
+    }else{
+
+      alert(
+        'Gagal membuat file Excel dari data ini.'
+      );
+
+    }
+
+  }
+
+}
 
 
 // =========================================================
@@ -3624,13 +4078,27 @@ function renderMarkdown(
         ];
 
 
-      html +=
-        buildCodeBlockHtml(
-          block.lang,
-          escapeHtml(
+      if(
+        block.lang &&
+        block.lang.toLowerCase() === 'excel'
+      ){
+
+        html +=
+          buildExcelBlockHtml(
             block.code
-          )
-        );
+          );
+
+      }else{
+
+        html +=
+          buildCodeBlockHtml(
+            block.lang,
+            escapeHtml(
+              block.code
+            )
+          );
+
+      }
 
     }else if(bullet){
 
