@@ -1821,6 +1821,56 @@
   gap:20px;
 }
 
+.hero-illustration{
+  width:100%;
+  max-width:220px;
+  align-self:flex-start;
+}
+
+.hero-illustration svg{
+  width:100%;
+  height:auto;
+  display:block;
+}
+
+.hero-glow{
+  animation:heroPulse 4s ease-in-out infinite;
+  transform-origin:120px 100px;
+}
+
+.hero-orbit{
+  animation:heroOrbit 9s linear infinite;
+  transform-origin:120px 100px;
+}
+
+.hero-orbit-rev{
+  animation-direction:reverse;
+  animation-duration:12s;
+}
+
+.hero-orbit-slow{
+  animation-duration:16s;
+}
+
+@keyframes heroPulse{
+  0%,100%{ opacity:.7; transform:scale(1); }
+  50%{ opacity:1; transform:scale(1.08); }
+}
+
+@keyframes heroOrbit{
+  from{ transform:rotate(0deg); }
+  to{ transform:rotate(360deg); }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .hero-glow,
+  .hero-orbit,
+  .hero-orbit-rev,
+  .hero-orbit-slow{
+    animation:none;
+  }
+}
+
 .login-story .byline{
   margin-top:auto;
   padding-top:24px;
