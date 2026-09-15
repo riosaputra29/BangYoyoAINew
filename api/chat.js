@@ -753,7 +753,132 @@ function trimMessagesForModel(
 /* =========================================================
    BUILD GROQ MESSAGE
 ========================================================= */
+function normalizeMessageContent(content) {
+  if (typeof content === "string") {
+    return content;
+  }
 
+  if (Array.isArray(content)) {
+    return content
+      .map(part => {
+        if (typeof part === "string") return part;
+
+        if (part?.type === "text") {
+          return part.text || "";
+        }
+
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  return String(content ?? "");
+}
+
+// function buildGroqMessages(
+//   cleanMessages,
+//   memoryText,
+//   useVision
+// ) {
+
+//   const result = [];
+
+
+//   result.push({
+
+//     role: "system",
+
+//     content: `Kamu adalah Tanya, asisten AI yang ramah dan teliti.
+
+//     ATURAN UTAMA:
+//     Utamakan akurasi.
+//     Jangan mengarang.
+    
+//     BAHASA:
+//     Gunakan Bahasa Indonesia default.
+//     Ikuti bahasa user.
+    
+//     ATURAN MEMORY YANG WAJIB:
+    
+//     Jika di bawah ada "nama: Budi",
+//     maka WAJIB panggil user "Budi"
+//     di setiap jawaban.
+    
+//     Jangan pernah tanya
+//     "siapa nama kamu" lagi kalau
+//     sudah ada di memory.
+    
+//     MEMORY USER:
+    
+//     ${memoryText}`
+
+//   });
+
+
+//   for (
+//     const message of cleanMessages
+//   ) {
+
+//     if (
+//       typeof message.content ===
+//       "string"
+//     ) {
+
+//       const documentInstruction =
+//         message.role === "user"
+//           ? buildDocumentInstruction(
+//               message.content
+//             )
+//           : null;
+
+
+//       if (
+//         documentInstruction
+//       ) {
+
+//         result.push({
+
+//           role: "system",
+
+//           content:
+//             documentInstruction
+
+//         });
+
+//       }
+
+
+//       result.push({
+
+//         role:
+//           message.role,
+
+//         content:
+//           message.content
+
+//       });
+
+//     } else {
+
+//       result.push({
+
+//         role:
+//           message.role,
+
+//         content:
+//           message.content
+
+//       });
+
+//     }
+
+//   }
+
+
+//   return result;
+
+// }
 function buildGroqMessages(
   cleanMessages,
   memoryText,
@@ -762,11 +887,8 @@ function buildGroqMessages(
 
   const result = [];
 
-
   result.push({
-
     role: "system",
-
     content: `Kamu adalah Tanya, asisten AI yang ramah dan teliti.
 
 ATURAN UTAMA:
@@ -790,72 +912,63 @@ sudah ada di memory.
 MEMORY USER:
 
 ${memoryText}`
-
   });
 
+  for (const message of cleanMessages) {
 
-  for (
-    const message of cleanMessages
-  ) {
-
-    if (
-      typeof message.content ===
-      "string"
-    ) {
+    // Jika content string
+    if (typeof message.content === "string") {
 
       const documentInstruction =
         message.role === "user"
-          ? buildDocumentInstruction(
-              message.content
-            )
+          ? buildDocumentInstruction(message.content)
           : null;
 
-
-      if (
-        documentInstruction
-      ) {
-
+      if (documentInstruction) {
         result.push({
-
           role: "system",
-
-          content:
-            documentInstruction
-
+          content: documentInstruction
         });
-
       }
 
-
       result.push({
-
-        role:
-          message.role,
-
-        content:
-          message.content
-
+        role: message.role,
+        content: message.content
       });
 
     } else {
 
-      result.push({
+      // Content array hanya boleh dipakai
+      // untuk pesan terakhir yang sedang
+      // mengirim gambar ke Vision model.
+      if (
+        useVision &&
+        message === cleanMessages[cleanMessages.length - 1] &&
+        Array.isArray(message.content)
+      ) {
 
-        role:
-          message.role,
+        result.push({
+          role: message.role,
+          content: message.content
+        });
 
-        content:
-          message.content
+      } else {
 
-      });
+        // Gambar dari chat sebelumnya
+        // diubah menjadi text agar tidak
+        // error di model text.
+        result.push({
+          role: message.role,
+          content: normalizeMessageContent(
+            message.content
+          )
+        });
 
+      }
     }
-
   }
 
-
   return result;
-
 }
 
 
