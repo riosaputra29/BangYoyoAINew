@@ -1794,6 +1794,16 @@
     linear-gradient(145deg,#1a1d24 0%,#17191f 72%);
 }
 
+.login-story{
+  justify-content:flex-start;
+  gap:20px;
+}
+
+.login-story .byline{
+  margin-top:auto;
+  padding-top:24px;
+}
+
 .login-card{
   max-width:390px;
   padding:30px;
@@ -1986,20 +1996,3 @@
   #signout-btn{padding:6px 10px;}
 }
 
-/* =========================================================
-   LOGIN - RAPATKAN LOGO DENGAN TAGLINE
-   ========================================================= */
-
-#login-screen .login-story > .tanya-logo.large {
-  margin-bottom: 8px !important;
-}
-
-#login-screen .login-story > div:nth-child(2) {
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-}
-
-#login-screen .login-story .headline {
-  margin-top: 0 !important;
-  margin-bottom: 6px !important;
-}
