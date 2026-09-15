@@ -4123,6 +4123,136 @@ input.addEventListener(
 );
 
 
+/* =========================================================
+   SIDEBAR RESPONSIVE + MANUAL RESIZE
+   ========================================================= */
+
+(() => {
+  const chatBody = document.getElementById("chat-body");
+  const sidebar = document.getElementById("sidebar");
+  const toggleBtn = document.getElementById("sidebar-toggle-btn");
+  const backdrop = document.getElementById("sidebar-backdrop");
+
+  if (!chatBody || !sidebar) return;
+
+  const MIN_WIDTH = 220;
+  const MAX_WIDTH = 480;
+  const MOBILE_BREAKPOINT = 700;
+
+  let isResizing = false;
+
+  function isMobile() {
+    return window.innerWidth <= MOBILE_BREAKPOINT;
+  }
+
+  /* -----------------------------------------
+     Toggle sidebar
+     ----------------------------------------- */
+
+  function toggleSidebar() {
+    if (isMobile()) {
+      chatBody.classList.toggle("sidebar-open");
+    } else {
+      chatBody.classList.toggle("sidebar-collapsed");
+    }
+  }
+
+  function closeSidebarMobile() {
+    if (isMobile()) {
+      chatBody.classList.remove("sidebar-open");
+    }
+  }
+
+  toggleBtn?.addEventListener("click", toggleSidebar);
+
+  backdrop?.addEventListener("click", closeSidebarMobile);
+
+  /* -----------------------------------------
+     Manual resize
+     ----------------------------------------- */
+
+  sidebar.addEventListener("pointerdown", (event) => {
+
+    if (isMobile()) return;
+
+    const rect = sidebar.getBoundingClientRect();
+
+    /* Hanya aktif kalau klik area kanan sidebar */
+    if (event.clientX < rect.right - 12) return;
+
+    isResizing = true;
+
+    sidebar.setPointerCapture?.(event.pointerId);
+
+    document.body.classList.add("sidebar-resizing");
+
+    event.preventDefault();
+  });
+
+  document.addEventListener("pointermove", (event) => {
+
+    if (!isResizing) return;
+
+    let width = event.clientX;
+
+    width = Math.max(MIN_WIDTH, width);
+    width = Math.min(MAX_WIDTH, width);
+
+    chatBody.style.setProperty("--sidebar-width", `${width}px`);
+  });
+
+  document.addEventListener("pointerup", () => {
+
+    if (!isResizing) return;
+
+    isResizing = false;
+
+    document.body.classList.remove("sidebar-resizing");
+
+    /* Simpan ukuran sidebar */
+    const width = parseInt(
+      getComputedStyle(chatBody)
+        .getPropertyValue("--sidebar-width")
+    );
+
+    if (width) {
+      localStorage.setItem("tanya_sidebar_width", width);
+    }
+  });
+
+  /* -----------------------------------------
+     Load ukuran sidebar terakhir
+     ----------------------------------------- */
+
+  const savedWidth = localStorage.getItem("tanya_sidebar_width");
+
+  if (savedWidth && !isNaN(savedWidth)) {
+
+    const width = Math.max(
+      MIN_WIDTH,
+      Math.min(MAX_WIDTH, Number(savedWidth))
+    );
+
+    chatBody.style.setProperty(
+      "--sidebar-width",
+      `${width}px`
+    );
+  }
+
+  /* -----------------------------------------
+     Reset mobile state saat resize window
+     ----------------------------------------- */
+
+  window.addEventListener("resize", () => {
+
+    if (!isMobile()) {
+      chatBody.classList.remove("sidebar-open");
+    }
+  });
+
+})();
+
+
 // =========================================================
 // AUTO RESIZE TEXTAREA
 // =========================================================
