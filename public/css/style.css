@@ -1823,8 +1823,9 @@
 
 .hero-illustration{
   width:100%;
-  max-width:220px;
-  align-self:flex-start;
+  max-width:340px;       /* sebelumnya 220px */
+  margin:0 auto;         /* center secara horizontal */
+  align-self:center;     /* override align-self:flex-start sebelumnya */
 }
 
 .hero-illustration svg{
