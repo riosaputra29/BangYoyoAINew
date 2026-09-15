@@ -55,14 +55,7 @@
   font-weight: 750;
   margin: 0 0 18px;
 }
-#login-screen .login-story .tanya-logo.large {
-  margin-bottom: 2px !important;
-}
 
-#login-screen .login-story .headline {
-  margin-top: 0 !important;
-  margin-bottom: 4px !important;
-}
 .bubble h2 {
   font-size: 1.25rem;
   line-height: 1.4;
@@ -1991,4 +1984,22 @@
   #chat-screen header{padding-left:12px;padding-right:12px;}
   #user-chip .name{display:none;}
   #signout-btn{padding:6px 10px;}
+}
+
+/* =========================================================
+   LOGIN - RAPATKAN LOGO DENGAN TAGLINE
+   ========================================================= */
+
+#login-screen .login-story > .tanya-logo.large {
+  margin-bottom: 8px !important;
+}
+
+#login-screen .login-story > div:nth-child(2) {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+#login-screen .login-story .headline {
+  margin-top: 0 !important;
+  margin-bottom: 6px !important;
 }
