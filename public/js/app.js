@@ -295,35 +295,68 @@ window.onload = function(){
 
 document
   .getElementById('signout-btn')
-  .addEventListener('click',() => {
+  .addEventListener('click', () => {
 
-    localStorage.removeItem(
-      'id_token'
-    );
+    // Hapus session aplikasi
+    localStorage.removeItem('id_token');
+    localStorage.removeItem('userProfile');
 
-    google.accounts.id.disableAutoSelect();
+    // Matikan auto-select Google
+    if (window.google?.accounts?.id) {
+      google.accounts.id.disableAutoSelect();
+    }
 
-    document.getElementById(
-      'chat-screen'
-    ).style.display = 'none';
+    // Reset user
+    userProfile = null;
 
-    document.getElementById(
-      'login-screen'
-    ).style.display = 'flex';
-
+    // Reset chat
     history = [];
-
     conversationsList = [];
-
     currentConversationId = null;
 
     clearAttachment();
 
-    document.getElementById(
-      'messages'
-    ).innerHTML = emptyStateHTML;
+    document.getElementById('messages').innerHTML =
+      emptyStateHTML;
 
+    // Tutup sidebar
     closeSidebar();
+
+    // Kembali ke login
+    document.getElementById('chat-screen').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+
+    // Render ulang Google Login
+    const googleBtnContainer =
+      document.getElementById('google-btn-container');
+
+    if (
+      googleBtnContainer &&
+      window.google?.accounts?.id
+    ) {
+      googleBtnContainer.innerHTML = '';
+
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleCredentialResponse,
+        auto_select: false,
+        cancel_on_tap_outside: false
+      });
+
+      google.accounts.id.renderButton(
+        googleBtnContainer,
+        {
+          theme: 'outline',
+          size: 'large',
+          shape: 'pill',
+          text: 'signin_with',
+          width: Math.min(
+            googleBtnContainer.offsetWidth || 300,
+            400
+          )
+        }
+      );
+    }
 
   });
 
