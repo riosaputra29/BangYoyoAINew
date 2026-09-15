@@ -36,7 +36,7 @@ const MODEL =
 
 const VISION_MODEL =
   process.env.GROQ_VISION_MODEL ||
-  "qwen/qwen3.6-27b";
+  "qwen/qwen3.8-27b";
 
 
 const MAX_IMAGES_PER_REQUEST = 5;
