@@ -3003,7 +3003,7 @@ function trySilentReauthThenRetry(
     client_id:
       GOOGLE_CLIENT_ID,
 
-    auto_select:true,
+    auto_select: false,
 
     callback:
       (response) => {
