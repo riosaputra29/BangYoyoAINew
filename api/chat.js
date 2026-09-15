@@ -1252,33 +1252,54 @@ export default async function handler(
   }
 
 
-
-  if (
-    !upstream.ok ||
-    !upstream.body
-  ) {
-
-    const errorText =
-      await upstream
-        .text()
-        .catch(
-          () => ""
-        );
-
-
-    return res
-      .status(
-        upstream.status
-      )
-      .json({
-
-        error:
-          errorText ||
-          "Gagal respons AI"
-
+  if (!upstream.ok || !upstream.body) {
+    const errorText = await upstream.text().catch(() => "");
+  
+    console.error("GROQ ERROR:", {
+      status: upstream.status,
+      body: errorText
+    });
+  
+    // Pertahankan 429 sebagai rate limit
+    if (upstream.status === 429) {
+      return res.status(429).json({
+        error: "Limit Groq sudah tercapai. Silakan coba lagi nanti."
       });
-
+    }
+  
+    // Semua error dari Groq jangan diteruskan sebagai 401
+    // agar frontend tidak menganggap sesi login habis.
+    return res.status(502).json({
+      error: errorText || "Gagal mendapatkan respons dari AI.",
+      code: "GROQ_ERROR"
+    });
   }
+  // if (
+  //   !upstream.ok ||
+  //   !upstream.body
+  // ) {
+
+  //   const errorText =
+  //     await upstream
+  //       .text()
+  //       .catch(
+  //         () => ""
+  //       );
+
+
+  //   return res
+  //     .status(
+  //       upstream.status
+  //     )
+  //     .json({
+
+  //       error:
+  //         errorText ||
+  //         "Gagal respons AI"
+
+  //     });
+
+  // }
 
 
 
