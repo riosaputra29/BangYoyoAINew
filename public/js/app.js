@@ -4254,6 +4254,85 @@ input.addEventListener(
 
 
 // =========================================================
+// VOICE INPUT — SPEECH TO TEXT
+// =========================================================
+
+(() => {
+  const voiceBtn = document.getElementById("voice-btn");
+  const input = document.getElementById("chat-input");
+
+  if (!voiceBtn || !input) return;
+
+  const SpeechRecognition =
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    voiceBtn.style.display = "none";
+    console.warn("Browser tidak mendukung Speech Recognition.");
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+
+  recognition.lang = "id-ID";
+  recognition.continuous = false;
+  recognition.interimResults = true;
+
+  let recording = false;
+
+  voiceBtn.addEventListener("click", () => {
+    if (recording) {
+      recognition.stop();
+      return;
+    }
+
+    try {
+      recognition.start();
+    } catch (error) {
+      console.error("Voice start error:", error);
+    }
+  });
+
+  recognition.onstart = () => {
+    recording = true;
+    voiceBtn.classList.add("recording");
+    voiceBtn.title = "Berhenti merekam";
+  };
+
+  recognition.onresult = (event) => {
+    let transcript = "";
+
+    for (
+      let i = event.resultIndex;
+      i < event.results.length;
+      i++
+    ) {
+      transcript += event.results[i][0].transcript;
+    }
+
+    if (transcript.trim()) {
+      input.value = transcript.trim();
+
+      input.dispatchEvent(new Event("input", {
+        bubbles: true
+      }));
+    }
+  };
+
+  recognition.onerror = (event) => {
+    console.error("Speech recognition error:", event.error);
+  };
+
+  recognition.onend = () => {
+    recording = false;
+    voiceBtn.classList.remove("recording");
+    voiceBtn.title = "Bicara dengan Tanya";
+  };
+})();
+
+
+// =========================================================
 // AUTO RESIZE TEXTAREA
 // =========================================================
 
