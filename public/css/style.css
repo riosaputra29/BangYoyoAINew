@@ -2177,6 +2177,10 @@ body.sidebar-resizing #sidebar::before {
     --sidebar-width: 280px;
   }
 
+  #chat-body {
+    overflow-x: hidden !important;
+  }
+
   #sidebar {
     position: fixed;
     left: 0;
@@ -2240,5 +2244,18 @@ body.sidebar-resizing #sidebar::before {
   #sidebar {
     width: min(var(--sidebar-width), 88vw);
   }
+}
+
+html,
+body {
+  overflow-x: hidden !important;
+}
+
+#chat-screen,
+#chat-body,
+#chat-main,
+#sidebar {
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
