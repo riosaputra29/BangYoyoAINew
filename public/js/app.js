@@ -3255,6 +3255,184 @@ function trimHistoryForSend(
 
 }
 
+// =========================================================
+// GENERATE IMAGE
+// =========================================================
+
+function isImageGenerationRequest(text) {
+
+  const t = text.toLowerCase().trim();
+
+  return (
+    t.startsWith('buatkan gambar') ||
+    t.startsWith('buat gambar') ||
+    t.startsWith('generate gambar') ||
+    t.startsWith('hasilkan gambar') ||
+    t.startsWith('bikin gambar') ||
+    t.includes('buatkan ilustrasi') ||
+    t.includes('buat ilustrasi')
+  );
+
+}
+
+
+async function generateImage(prompt) {
+
+  const idToken =
+    localStorage.getItem('id_token');
+
+  if (!idToken) {
+    throw new Error('Sesi login sudah habis.');
+  }
+
+  const response =
+    await fetch('/api/generate-image', {
+      method: 'POST',
+
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + idToken
+      },
+
+      body: JSON.stringify({
+        prompt: prompt
+      })
+    });
+
+  const data =
+    await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+
+    throw new Error(
+      data?.error ||
+      'Gagal membuat gambar.'
+    );
+
+  }
+
+  if (!data.image) {
+    throw new Error(
+      'Server tidak mengembalikan gambar.'
+    );
+  }
+
+  return data.image;
+
+}
+
+async function sendImageGeneration(prompt) {
+
+  const idToken =
+    localStorage.getItem('id_token');
+
+  if (!idToken) {
+
+    alert(
+      'Sesi login sudah habis. Silakan login kembali.'
+    );
+
+    return;
+
+  }
+
+  input.value = '';
+
+  input.style.height = 'auto';
+
+  sendBtn.disabled = true;
+
+
+  // Tampilkan pesan user
+  addRow(
+    'user',
+    null
+  ).appendChild(
+
+    Object.assign(
+      document.createElement('span'),
+      {
+        textContent: prompt
+      }
+    )
+
+  );
+
+
+  // Bubble AI
+  const aiBubble =
+    addRow('ai');
+
+
+  aiBubble.innerHTML =
+    '<span class="typing-dots">' +
+      '<span></span>' +
+      '<span></span>' +
+      '<span></span>' +
+    '</span>';
+
+
+  try {
+
+    const image =
+      await generateImage(prompt);
+
+
+    aiBubble.innerHTML = '';
+
+
+    const img =
+      document.createElement('img');
+
+
+    img.className =
+      'msg-image';
+
+
+    img.src =
+      image;
+
+
+    img.alt =
+      prompt;
+
+
+    img.style.maxWidth =
+      '100%';
+
+
+    img.style.borderRadius =
+      '14px';
+
+
+    aiBubble.appendChild(
+      img
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      'Generate image error:',
+      error
+    );
+
+
+    aiBubble.textContent =
+      error.message ||
+      'Gagal membuat gambar.';
+
+
+  } finally {
+
+    sendBtn.disabled = false;
+
+    input.focus();
+
+  }
+
+}
+
 
 // =========================================================
 // SEND MESSAGE
@@ -3270,11 +3448,23 @@ async function sendMessage(){
     pendingAttachment;
 
 
-  if(
-    !text &&
-    !attachment
-  )
+  // if(
+  //   !text &&
+  //   !attachment
+  // )
+  //   return;
+
+   if (
+    text &&
+    !attachment &&
+    isImageGenerationRequest(text)
+  ) {
+
+    await sendImageGeneration(text);
+
     return;
+
+  }
 
 
   const idToken =
