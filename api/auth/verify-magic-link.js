@@ -1,56 +1,6 @@
-import crypto from "crypto";
+import { verifyTanyaToken } from "../../lib/auth.js";
 
 export const runtime = "nodejs";
-
-function verifyMagicToken(token) {
-  const secret = process.env.MAGIC_LINK_SECRET;
-
-  if (!secret) {
-    throw new Error("MAGIC_LINK_SECRET belum diset.");
-  }
-
-  const parts = String(token).split(".");
-
-  if (parts.length !== 2) {
-    throw new Error("Format token tidak valid.");
-  }
-
-  const [payloadEncoded, signature] = parts;
-
-  const expectedSignature = crypto
-    .createHmac("sha256", secret)
-    .update(payloadEncoded)
-    .digest("base64url");
-
-  if (
-    !crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    )
-  ) {
-    throw new Error("Signature token tidak valid.");
-  }
-
-  const payload = JSON.parse(
-    Buffer.from(payloadEncoded, "base64url").toString("utf8")
-  );
-
-  if (payload.type !== "magic") {
-    throw new Error("Token bukan magic link.");
-  }
-
-  if (!payload.email || !payload.userId) {
-    throw new Error("Data token tidak lengkap.");
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-
-  if (!payload.exp || now > payload.exp) {
-    throw new Error("Magic link sudah kedaluwarsa.");
-  }
-
-  return payload;
-}
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -64,7 +14,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    verifyMagicToken(token);
+    const data = await verifyTanyaToken(token);
+
+    if (
+      data.type !== "magic" ||
+      !data.email ||
+      !data.userId
+    ) {
+      throw new Error("Invalid magic token");
+    }
 
     const origin =
       process.env.APP_URL ||
@@ -76,11 +34,14 @@ export default async function handler(req, res) {
     );
 
   } catch (error) {
+
     console.error("VERIFY MAGIC LINK ERROR:", error);
 
     return res.status(401).send(`
       <!doctype html>
+
       <html lang="id">
+
       <head>
         <meta charset="utf-8">
         <title>Magic Link Tidak Valid</title>
@@ -104,14 +65,20 @@ export default async function handler(req, res) {
 
           <h2>Link login tidak valid</h2>
 
-          <p style="color:#bbb;line-height:1.6">
+          <p style="
+            color:#bbb;
+            line-height:1.6;
+          ">
             Link mungkin sudah kedaluwarsa atau tidak valid.
             Silakan kembali ke Tanya dan kirim magic link baru.
           </p>
 
           <a
             href="/"
-            style="color:#e8c77a;text-decoration:none"
+            style="
+              color:#e8c77a;
+              text-decoration:none;
+            "
           >
             Kembali ke Tanya
           </a>
@@ -119,6 +86,7 @@ export default async function handler(req, res) {
         </div>
 
       </body>
+
       </html>
     `);
   }
