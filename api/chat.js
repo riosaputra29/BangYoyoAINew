@@ -1,5 +1,4 @@
 import { OAuth2Client } from "google-auth-library";
-import crypto from "crypto";
 
 import {
   getMemories,
@@ -10,6 +9,10 @@ import {
 } from "../lib/memory.js";
 
 import { extractAndSaveFacts } from "../lib/extract.js";
+
+import {
+  verifyTanyaToken
+} from "../lib/auth.js";
 
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -96,129 +99,22 @@ async function verifyGoogleToken(idToken) {
    MAGIC LINK TOKEN
 ========================================================= */
 
-function verifyMagicToken(token) {
+async function verifyMagicToken(token) {
+  const data = await verifyTanyaToken(token);
 
-  const secret =
-    process.env.MAGIC_LINK_SECRET;
-
-  if (!secret) {
-    throw new Error(
-      "MAGIC_LINK_SECRET belum dikonfigurasi."
-    );
+  if (data.type !== "session") {
+    throw new Error("Token session tidak valid.");
   }
-
-
-  const parts =
-    String(token).split(".");
-
-
-  if (parts.length !== 3) {
-    throw new Error(
-      "Format magic token tidak valid."
-    );
-  }
-
-
-  const [
-    header,
-    payload,
-    signature
-  ] = parts;
-
-
-  const expectedSignature =
-    crypto
-      .createHmac(
-        "sha256",
-        secret
-      )
-      .update(
-        `${header}.${payload}`
-      )
-      .digest("base64url");
-
-
-  if (
-    signature.length !==
-    expectedSignature.length
-  ) {
-    throw new Error(
-      "Signature token tidak valid."
-    );
-  }
-
-
-  const validSignature =
-    crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    );
-
-
-  if (!validSignature) {
-    throw new Error(
-      "Signature token tidak valid."
-    );
-  }
-
-
-  let data;
-
-
-  try {
-
-    const decoded =
-      Buffer.from(
-        payload
-          .replace(/-/g, "+")
-          .replace(/_/g, "/"),
-        "base64"
-      ).toString("utf8");
-
-
-    data =
-      JSON.parse(decoded);
-
-  } catch {
-
-    throw new Error(
-      "Payload magic token tidak valid."
-    );
-  }
-
 
   if (!data.userId) {
-    throw new Error(
-      "User ID tidak ditemukan."
-    );
+    throw new Error("User ID tidak ditemukan.");
   }
-
-
-  if (
-    !data.exp ||
-    Date.now() >= Number(data.exp)
-  ) {
-
-    throw new Error(
-      "Magic link sudah expired."
-    );
-  }
-
 
   return {
-
     userId: String(data.userId),
-
-    email:
-      data.email || null,
-
-    name:
-      data.name ||
-      data.email ||
-      "User",
-
-    provider: "magic"
-
+    email: data.email || null,
+    name: data.name || data.email || "User",
+    provider: data.auth_provider || "magic"
   };
 }
 
@@ -231,35 +127,18 @@ function verifyMagicToken(token) {
 async function verifyAuthToken(token) {
 
   if (!token) {
-    throw new Error(
-      "Token login kosong."
-    );
+    throw new Error("Token login kosong.");
   }
 
-
-  /*
-   * Pertama coba Google ID Token.
-   */
-
+  // Coba Google
   try {
-
     return await verifyGoogleToken(token);
-
   } catch (googleError) {
-
-    console.log(
-      "Bukan Google token, mencoba Magic Link..."
-    );
-
+    console.log("Bukan Google token, mencoba Magic Link...");
   }
 
-
-  /*
-   * Kalau bukan Google,
-   * coba Magic Link.
-   */
-
-  return verifyMagicToken(token);
+  // Coba Magic Link session
+  return await verifyMagicToken(token);
 }
 
 
