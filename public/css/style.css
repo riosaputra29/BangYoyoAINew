@@ -421,6 +421,17 @@
     animation-delay:.3s;
   }
 
+  #google-btn-container{
+    width:100%;
+    overflow:hidden;
+    display:flex;
+    justify-content:center;
+  }
+  
+  #google-btn-container > div{
+    max-width:100%;
+  }
+
   @media (prefers-reduced-motion:reduce){
     .login-story > *,
     .login-card > *{
