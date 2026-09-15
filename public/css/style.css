@@ -2291,6 +2291,42 @@ body {
   color: white;
 }
 
+#think-btn {
+  height: 42px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted, #999);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: .2s ease;
+}
+
+#think-btn:hover {
+  color: #c99b4a;
+  background: rgba(201,155,74,.10);
+}
+
+#think-btn.active {
+  color: #fff;
+  background: #c99b4a;
+  box-shadow: 0 0 12px rgba(201,155,74,.30);
+}
+
+.think-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.think-text {
+  font-size: 13px;
+  font-weight: 600;
+}
+
 @keyframes voicePulse {
   0%, 100% {
     box-shadow: 0 0 0 0 rgba(201,155,74,.35);
