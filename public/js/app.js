@@ -246,7 +246,7 @@ window.onload = function(){
         size:'large',
         shape:'pill',
         text:'signin_with',
-        width:320
+        width: Math.min(container.offsetWidth, 400) // GSI maksimal 400px
       }
 
     );
