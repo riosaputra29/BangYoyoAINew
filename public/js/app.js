@@ -4351,21 +4351,6 @@ input.addEventListener(
       ) + 'px';
 
   }
-
-  let thinkMode = false;
-
-  const thinkBtn = document.getElementById("think-btn");
-  
-  if (thinkBtn) {
-    thinkBtn.addEventListener("click", () => {
-      thinkMode = !thinkMode;
-  
-      thinkBtn.classList.toggle("active", thinkMode);
-      thinkBtn.title = thinkMode
-        ? "Think aktif"
-        : "Think nonaktif";
-    });
-}
 );
 
 
