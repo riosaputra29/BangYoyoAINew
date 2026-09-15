@@ -3514,73 +3514,131 @@ async function sendMessage(){
     }
 
     // 401
-    if(
-      response.status === 401
-    ){
-
-      aiBubble.innerHTML =
-
-        '<span class="typing-dots">' +
-
-          '<span></span>' +
-          '<span></span>' +
-          '<span></span>' +
-
-        '</span>';
-
-
-      trySilentReauthThenRetry(
-
-        () => {
-
-          sendBtn.disabled =
-            false;
-
-          aiBubble
-            .closest('.row')
-            .remove();
-
-          sendMessage();
-
-        },
-
-        () => {
-
-          aiBubble.textContent =
-            'Sesi login sudah habis. Silakan login ulang.';
-
-
-          localStorage.removeItem(
-            'id_token'
-          );
-
-
-          setTimeout(
-            () => {
-
-              document.getElementById(
-                'chat-screen'
-              ).style.display =
-                'none';
-
-
-              document.getElementById(
-                'login-screen'
-              ).style.display =
-                'flex';
-
-            },
-            1200
-          );
-
-        }
-
+    // ============================================================
+    // 401 = SESSION BENAR-BENAR TIDAK VALID
+    // ============================================================
+    if(response.status === 401){
+    
+      let errorMessage = '';
+    
+      try{
+        const data = await response.json();
+    
+        errorMessage =
+          data?.error ||
+          data?.message ||
+          '';
+      }catch(e){}
+    
+      console.error(
+        'API 401:',
+        errorMessage
       );
-
-
+    
+      // Hanya anggap session habis jika backend memang
+      // mengirim pesan unauthorized/session.
+      const isSessionError =
+        /unauthorized|session|token|login|expired|kedaluwarsa/i
+          .test(errorMessage);
+    
+      if(!isSessionError){
+    
+        aiBubble.textContent =
+          errorMessage ||
+          'Terjadi error pada server AI.';
+    
+        sendBtn.disabled = false;
+    
+        return;
+      }
+    
+      // Memang session invalid
+      aiBubble.textContent =
+        'Sesi login sudah habis. Silakan login kembali.';
+    
+      localStorage.removeItem('id_token');
+    
+      setTimeout(() => {
+    
+        document.getElementById(
+          'chat-screen'
+        ).style.display = 'none';
+    
+        document.getElementById(
+          'login-screen'
+        ).style.display = 'flex';
+    
+      }, 1200);
+    
       return;
-
     }
+    // if(
+    //   response.status === 401
+    // ){
+
+    //   aiBubble.innerHTML =
+
+    //     '<span class="typing-dots">' +
+
+    //       '<span></span>' +
+    //       '<span></span>' +
+    //       '<span></span>' +
+
+    //     '</span>';
+
+
+    //   trySilentReauthThenRetry(
+
+    //     () => {
+
+    //       sendBtn.disabled =
+    //         false;
+
+    //       aiBubble
+    //         .closest('.row')
+    //         .remove();
+
+    //       sendMessage();
+
+    //     },
+
+    //     () => {
+
+    //       aiBubble.textContent =
+    //         'Sesi login sudah habis. Silakan login ulang.';
+
+
+    //       localStorage.removeItem(
+    //         'id_token'
+    //       );
+
+
+    //       setTimeout(
+    //         () => {
+
+    //           document.getElementById(
+    //             'chat-screen'
+    //           ).style.display =
+    //             'none';
+
+
+    //           document.getElementById(
+    //             'login-screen'
+    //           ).style.display =
+    //             'flex';
+
+    //         },
+    //         1200
+    //       );
+
+    //     }
+
+    //   );
+
+
+    //   return;
+
+    // }
 
 
     // ERROR
