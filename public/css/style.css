@@ -1799,6 +1799,17 @@
   gap:20px;
 }
 
+.login-story .copyright{
+  margin-top:auto;      /* mendorong baris ini ke paling bawah container */
+  padding-top:24px;
+  text-align:left;      /* override .copyright asli yang center, biar sejajar teks lain */
+}
+
+.login-story{
+  justify-content:flex-start;
+  gap:20px;
+}
+
 .login-story .byline{
   margin-top:auto;
   padding-top:24px;
