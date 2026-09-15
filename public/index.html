@@ -161,16 +161,31 @@
 
       <div id="google-btn-container"></div>
 
+      <div class="login-divider"><span>OR</span></div>
+
+      <form id="magic-link-form" class="magic-link-form">
+        <input
+          id="magic-email"
+          type="email"
+          autocomplete="email"
+          placeholder="Masukkan email kamu"
+          required
+        >
+        <button id="magic-link-btn" type="submit">
+          Lanjutkan dengan email
+        </button>
+      </form>
+
+      <p id="magic-link-status" class="magic-link-status"></p>
+
       <p id="login-error">
         Login belum bisa dimuat.
-        Pastikan Client ID sudah diisi (lihat README.md).
+        Pastikan Client ID sudah diisi.
       </p>
 
       <p class="login-fineprint">
-        Dengan masuk, kamu menyetujui bahwa percakapanmu
-        diproses untuk menghasilkan balasan.
-        Tidak ada data yang dibagikan ke pihak ketiga
-        di luar penyedia AI.
+        Dengan melanjutkan, kamu menyetujui
+        <a href="/privacy.html">Privacy Policy</a>.
       </p>
 
     </div>
