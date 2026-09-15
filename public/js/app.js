@@ -227,7 +227,8 @@ window.onload = function(){
     google.accounts.id.initialize({
       client_id:GOOGLE_CLIENT_ID,
       callback:handleCredentialResponse,
-      auto_select:true
+      auto_select: false,
+      cancel_on_tap_outside: false
     });
 
     const googleBtnContainer =
