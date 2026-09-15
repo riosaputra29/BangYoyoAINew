@@ -1985,3 +1985,404 @@
   #user-chip .name{display:none;}
   #signout-btn{padding:6px 10px;}
 }
+
+/* =========================================================
+   MOBILE RESPONSIVE FIX — Tanya AI
+   ========================================================= */
+html{
+  height:100%;
+  height:100dvh;
+  overflow:hidden;
+}
+
+body{
+  min-height:100%;
+  min-height:100dvh;
+  height:100dvh;
+  overflow:hidden;
+  overscroll-behavior:none;
+}
+
+#login-screen,
+#chat-screen{
+  min-height:0;
+  height:100dvh;
+}
+
+/* Prevent long text/code from forcing the page wider */
+#chat-main,
+#messages,
+.row,
+.bubble-col,
+.bubble{
+  min-width:0;
+  max-width:100%;
+}
+
+.bubble pre,
+.code-block pre,
+.bubble table{
+  max-width:100%;
+}
+
+@media (max-width:760px){
+  /* ---------- APP HEADER ---------- */
+  #chat-screen header{
+    min-height:56px;
+    height:56px;
+    padding:8px 12px;
+    padding-top:calc(8px + env(safe-area-inset-top));
+    padding-bottom:8px;
+  }
+
+  .header-left{
+    min-width:0;
+    gap:8px;
+  }
+
+  .brand{
+    min-width:0;
+  }
+
+  .brand-name{
+    font-size:1.05rem;
+  }
+
+  #user-menu{
+    gap:6px;
+    min-width:0;
+  }
+
+  #user-chip img{
+    width:30px;
+    height:30px;
+  }
+
+  #signout-btn{
+    min-height:34px;
+    padding:6px 9px;
+    font-size:.72rem;
+  }
+
+  /* ---------- SIDEBAR ---------- */
+  #sidebar{
+    width:min(86vw,320px);
+    max-width:320px;
+    height:100dvh;
+    top:0;
+    padding-top:calc(12px + env(safe-area-inset-top));
+    padding-bottom:calc(10px + env(safe-area-inset-bottom));
+    transform:translate3d(-105%,0,0);
+    will-change:transform;
+    z-index:100;
+  }
+
+  #sidebar.open{
+    transform:translate3d(0,0,0);
+  }
+
+  #sidebar-backdrop{
+    z-index:90;
+    background:rgba(0,0,0,.58);
+    -webkit-backdrop-filter:blur(2px);
+    backdrop-filter:blur(2px);
+  }
+
+  .sidebar-content{
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .new-chat-button{
+    min-height:46px;
+    padding:8px 10px;
+  }
+
+  .sidebar-chat-main{
+    min-height:42px;
+    padding:10px 8px;
+  }
+
+  .sidebar-delete-btn{
+    width:38px;
+    height:38px;
+    margin:2px 3px 2px 0;
+    opacity:1;
+  }
+
+  /* ---------- CHAT ---------- */
+  #chat-body{
+    min-height:0;
+    height:calc(100dvh - 56px);
+  }
+
+  #messages{
+    padding:18px 0 10px;
+    gap:16px;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;
+  }
+
+  .row{
+    width:100%;
+    padding-left:12px;
+    padding-right:12px;
+    gap:8px;
+  }
+
+  .avatar{
+    width:27px;
+    height:27px;
+  }
+
+  .bubble-col{
+    max-width:calc(100% - 35px);
+  }
+
+  .bubble{
+    max-width:100%;
+    padding:10px 12px;
+    font-size:.91rem;
+    line-height:1.6;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+
+  .bubble pre,
+  .code-block pre{
+    max-width:100%;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    font-size:.78rem;
+  }
+
+  .bubble table{
+    min-width:520px;
+  }
+
+  .msg-image{
+    max-width:min(260px,70vw);
+    max-height:240px;
+  }
+
+  /* ---------- EMPTY STATE ---------- */
+  #empty-state{
+    width:100%;
+    max-width:100%;
+    padding:20px 18px;
+    gap:14px;
+  }
+
+  #empty-state .tanya-logo.large{
+    width:52px;
+    height:52px;
+  }
+
+  #empty-state .lead{
+    font-size:1.08rem;
+  }
+
+  #empty-state .sub{
+    max-width:320px;
+    font-size:.8rem;
+  }
+
+  .chip-row{
+    width:100%;
+    gap:7px;
+  }
+
+  .chip{
+    max-width:100%;
+    padding:8px 11px;
+    font-size:.75rem;
+  }
+
+  /* ---------- COMPOSER ---------- */
+  #composer-wrap{
+    padding:8px 10px;
+    padding-bottom:calc(8px + env(safe-area-inset-bottom));
+    background:var(--bg);
+  }
+
+  #attachment-preview{
+    margin-bottom:7px;
+    padding:7px 8px;
+    border-radius:10px;
+  }
+
+  #composer{
+    width:100%;
+    max-width:none;
+    gap:6px;
+    padding:7px;
+    border-radius:14px;
+  }
+
+  #composer textarea{
+    min-width:0;
+    width:100%;
+    font-size:.9rem;
+    line-height:1.45;
+    padding:8px 2px 8px 5px;
+    max-height:120px;
+  }
+
+  .attach-btn,
+  #send-btn{
+    width:38px;
+    min-width:38px;
+    height:38px;
+    padding:0;
+    border-radius:10px;
+  }
+
+  #send-btn{
+    font-size:0;
+  }
+
+  #send-btn svg{
+    width:16px;
+    height:16px;
+  }
+
+  #scroll-bottom{
+    bottom:82px;
+    font-size:.7rem;
+    padding:6px 10px;
+  }
+
+  /* ---------- LOGIN ---------- */
+  #login-screen{
+    display:flex;
+    flex-direction:column;
+    height:100dvh;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .login-story{
+    flex:none;
+    min-height:auto;
+    padding:30px 20px 24px;
+    border-bottom:1px solid var(--border);
+  }
+
+  .login-story .tanya-logo.large{
+    width:50px;
+    height:50px;
+  }
+
+  .login-story > div:nth-child(2){
+    margin-top:12px;
+  }
+
+  .login-story .headline{
+    font-size:clamp(1.5rem,7vw,1.9rem);
+    line-height:1.18;
+  }
+
+  .login-story > div:nth-child(2) p:last-child{
+    font-size:.72rem;
+    margin-top:7px;
+  }
+
+  .login-panel{
+    flex:none;
+    width:100%;
+    padding:20px 14px calc(28px + env(safe-area-inset-bottom));
+    align-items:flex-start;
+  }
+
+  .login-card{
+    width:100%;
+    max-width:430px;
+    margin:0 auto;
+    padding:20px 18px;
+    gap:17px;
+    border-radius:18px;
+  }
+
+  .login-card h1{
+    font-size:1.18rem;
+  }
+
+  .login-card p{
+    font-size:.82rem;
+  }
+
+  #google-btn-container{
+    width:100%;
+    overflow:hidden;
+  }
+
+  #google-btn-container > div,
+  #google-btn-container iframe{
+    max-width:100% !important;
+  }
+
+  #magic-email,
+  #magic-link-btn{
+    height:46px;
+    font-size:.88rem;
+  }
+}
+
+@media (max-width:380px){
+  #chat-screen header{
+    padding-left:9px;
+    padding-right:9px;
+  }
+
+  .tanya-logo.small{
+    width:27px;
+    height:27px;
+  }
+
+  .brand-name{
+    font-size:1rem;
+  }
+
+  #signout-btn{
+    padding:5px 7px;
+    font-size:.68rem;
+  }
+
+  .row{
+    padding-left:9px;
+    padding-right:9px;
+  }
+
+  .bubble-col{
+    max-width:calc(100% - 32px);
+  }
+
+  .bubble{
+    font-size:.87rem;
+    padding:9px 10px;
+  }
+
+  #composer-wrap{
+    padding-left:7px;
+    padding-right:7px;
+  }
+
+  #composer{
+    padding:6px;
+  }
+
+  .attach-btn,
+  #send-btn{
+    width:36px;
+    min-width:36px;
+    height:36px;
+  }
+}
+
+/* iPhone/Android keyboard: avoid content being hidden behind the composer */
+@supports (height: 100dvh){
+  #chat-screen,
+  #chat-body,
+  #sidebar{
+    min-height:100dvh;
+  }
+}
