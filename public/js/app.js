@@ -225,28 +225,22 @@ window.onload = function(){
     initMagicLink();
 
     google.accounts.id.initialize({
-
       client_id:GOOGLE_CLIENT_ID,
-
       callback:handleCredentialResponse,
-
       auto_select:true
-
     });
 
+    const googleBtnContainer =
+      document.getElementById('google-btn-container');
 
     google.accounts.id.renderButton(
-
-      document.getElementById(
-        'google-btn-container'
-      ),
-
+      googleBtnContainer,
       {
         theme:'outline',
         size:'large',
         shape:'pill',
         text:'signin_with',
-        width: Math.min(container.offsetWidth, 400) // GSI maksimal 400px
+        width: Math.min(googleBtnContainer.offsetWidth || 300, 400)
       }
 
     );
