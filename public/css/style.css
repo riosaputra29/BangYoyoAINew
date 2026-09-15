@@ -33,6 +33,18 @@
     -webkit-font-smoothing:antialiased;
   }
 
+  .login-footer {
+  margin-top: 14px !important;
+}
+
+.login-footer .tagline {
+  margin-bottom: 5px !important;
+}
+
+.login-footer .copyright {
+  margin-top: 0 !important;
+}
+
   /* =========================================================
    MARKDOWN CHAT
    ========================================================= */
