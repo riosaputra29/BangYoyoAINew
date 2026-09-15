@@ -1,5 +1,4 @@
 
-
 // =========================================================
 // KONFIGURASI
 // =========================================================
@@ -134,12 +133,96 @@ function handleCredentialResponse(response){
 
 
 // =========================================================
+// MAGIC LINK LOGIN
+// =========================================================
+
+function setMagicStatus(message, type=''){
+  const el = document.getElementById('magic-link-status');
+  if(!el) return;
+  el.textContent = message || '';
+  el.className = 'magic-link-status' + (type ? ' ' + type : '');
+}
+
+async function sendMagicLink(email){
+  const btn = document.getElementById('magic-link-btn');
+  const input = document.getElementById('magic-email');
+  if(btn) btn.disabled = true;
+  setMagicStatus('Mengirim link login ke email kamu...');
+
+  try{
+    const response = await fetch('/api/auth/send-magic-link', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email})
+    });
+    const data = await response.json().catch(() => ({}));
+    if(!response.ok) throw new Error(data.error || 'Gagal mengirim magic link.');
+    setMagicStatus('Magic link sudah dikirim. Cek inbox atau folder spam email kamu.', 'success');
+    if(input) input.value = '';
+  }catch(e){
+    console.error('Magic link error:', e);
+    setMagicStatus(e.message || 'Gagal mengirim magic link.', 'error');
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+async function completeMagicLogin(token){
+  if(!token) return false;
+  setMagicStatus('Memverifikasi link login...');
+
+  try{
+    const response = await fetch('/api/auth/complete-magic-link', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token})
+    });
+    const data = await response.json().catch(() => ({}));
+    if(!response.ok || !data.token) throw new Error(data.error || 'Magic link tidak valid atau sudah kedaluwarsa.');
+
+    localStorage.setItem('id_token', data.token);
+    userProfile = data.user || decodeJwt(data.token);
+
+    // Hilangkan token dari address bar dan history browser.
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    showChatScreen();
+    await loadConversations(true);
+    document.getElementById('chat-input').focus();
+    return true;
+  }catch(e){
+    console.error('Magic link verification error:', e);
+    window.history.replaceState({}, document.title, window.location.pathname);
+    setMagicStatus(e.message || 'Magic link tidak valid.', 'error');
+    return false;
+  }
+}
+
+function initMagicLink(){
+  const form = document.getElementById('magic-link-form');
+  if(form){
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const email = document.getElementById('magic-email').value.trim();
+      if(email) sendMagicLink(email);
+    });
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('magic_token');
+  if(token) completeMagicLogin(token);
+}
+
+
+// =========================================================
 // WINDOW LOAD
 // =========================================================
 
 window.onload = function(){
 
   try{
+
+    initMagicLink();
 
     google.accounts.id.initialize({
 
@@ -172,6 +255,9 @@ window.onload = function(){
     const savedToken =
       localStorage.getItem('id_token');
 
+    const hasMagicToken =
+      new URLSearchParams(window.location.search).has('magic_token');
+
 
     if(
       savedToken &&
@@ -185,7 +271,7 @@ window.onload = function(){
 
       loadConversations(true);
 
-    }else{
+    }else if(!hasMagicToken){
 
       localStorage.removeItem(
         'id_token'
