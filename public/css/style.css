@@ -2080,39 +2080,33 @@
 
 /* Sidebar */
 #sidebar {
-  width: var(--sidebar-width);
+  width: var(--sidebar-width, 280px);
   min-width: 220px;
   max-width: 480px;
   position: relative;
   flex-shrink: 0;
-  transition: width .15s ease;
 }
 
-/* Handle untuk mengubah lebar sidebar */
 #sidebar::after {
   content: "";
   position: absolute;
   top: 0;
-  right: -4px;
-  width: 8px;
+  right: -6px;
+  width: 12px;
   height: 100%;
   cursor: col-resize;
   z-index: 30;
 }
 
-/* Garis handle saat hover */
+/* Tidak ada garis slider */
 #sidebar::before {
-  content: "";
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  right: 0;
-  width: 2px;
-  border-radius: 999px;
-  background: transparent;
-  transition: background .2s ease;
-  z-index: 31;
-  pointer-events: none;
+  display: none !important;
+}
+
+body.sidebar-resizing,
+body.sidebar-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 #sidebar:hover::before {
