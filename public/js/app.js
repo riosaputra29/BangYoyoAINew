@@ -893,7 +893,6 @@ async function selectConversation(conversationId){
 
   currentConversationId = conversationId;
 
-  // Sinkronkan project context sesuai percakapan yang dipilih
   const conv = conversationsList.find(
     c => Number(c.id) === Number(conversationId)
   );
@@ -909,7 +908,6 @@ async function selectConversation(conversationId){
     localStorage.removeItem('active_project_name');
   }
 
-  // Bersihkan / set ulang highlight folder project di sidebar
   document.querySelectorAll('.project-item').forEach(item => {
     item.classList.toggle(
       'active',
@@ -918,13 +916,9 @@ async function selectConversation(conversationId){
   });
 
   renderConversationList();
-
   history = [];
-
   document.getElementById('messages').innerHTML = emptyStateHTML;
-
   await loadChatHistory(conversationId);
-
   closeSidebar();
 }
 
