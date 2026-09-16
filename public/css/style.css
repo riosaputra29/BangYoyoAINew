@@ -3068,27 +3068,119 @@ body.sidebar-resizing #sidebar::before {
   color: var(--accent-light);
 }
 
-.project-item {
+/* =========================================================
+   PROJECT DELETE BUTTON
+   ========================================================= */
+
+#sidebar #sidebar-project-list .project-item {
   position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
 }
 
-.project-delete-btn {
-  margin-left: auto;
-  opacity: 0;
-  transition: opacity 0.15s;
-  background: none;
+/* Tombol utama project */
+#sidebar #sidebar-project-list .project-item-main {
+  flex: 1;
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  padding: 7px 9px;
+
   border: none;
-  color: inherit;
+  background: transparent;
+
+  color: var(--text-muted);
+
   cursor: pointer;
-  padding: 4px;
+  text-align: left;
 }
 
-.project-item:hover .project-delete-btn {
-  opacity: 0.6;
+/* Nama project */
+#sidebar #sidebar-project-list .project-item-main
+.project-item-name {
+  min-width: 0;
+  flex: 1;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.project-delete-btn:hover {
-  opacity: 1 !important;
+/* Tombol delete */
+#sidebar #sidebar-project-list .project-delete-btn {
+  width: 30px;
+  height: 30px;
+
+  flex: 0 0 30px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin: 0 4px 0 0;
+  padding: 0;
+
+  border: none;
+  border-radius: 7px;
+
+  background: transparent;
+
+  color: var(--text-muted);
+
+  cursor: pointer;
+
+  opacity: 0;
+
+  transition:
+    opacity 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+/* Muncul saat project diarahkan */
+#sidebar #sidebar-project-list .project-item:hover
+.project-delete-btn {
+  opacity: 1;
+}
+
+/* Hover tombol delete */
+#sidebar #sidebar-project-list .project-delete-btn:hover {
+  opacity: 1;
+
+  background: rgba(224, 138, 138, 0.12);
+
   color: #ef4444;
+}
+
+/* Icon delete */
+#sidebar #sidebar-project-list
+.project-delete-btn svg {
+  width: 15px;
+  height: 15px;
+
+  display: block;
+
+  stroke: currentColor;
+}
+
+/* Disabled */
+#sidebar #sidebar-project-list
+.project-delete-btn:disabled {
+  opacity: 0.4;
+  cursor: wait;
+}
+
+/* Mobile: tombol delete selalu terlihat */
+@media (max-width: 760px) {
+
+  #sidebar #sidebar-project-list
+  .project-delete-btn {
+    opacity: 0.7;
+  }
+
 }
 
