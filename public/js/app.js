@@ -378,29 +378,33 @@ const startVoiceBtn =
 // Prompt Suggestion
 // =========================================================
 function getPromptSuggestions(text) {
-  const suggestions = [];
-
   if (/gis|lidar|peta|dem|slope|elevasi/i.test(text)) {
-    suggestions.push(
+    return [
       "Analisis area kritis",
       "Identifikasi risiko",
       "Berikan rekomendasi teknis"
-    );
-  } else if (/data|laporan|excel|csv|angka|trend/i.test(text)) {
-    suggestions.push(
+    ];
+  }
+
+  if (/data|laporan|excel|csv|angka|trend/i.test(text)) {
+    return [
       "Cari anomali",
       "Analisis trend",
       "Berikan dampak bisnis"
-    );
-  } else {
-    suggestions.push(
-      "Jelaskan lebih sederhana",
-      "Buat ringkasan",
-      "Berikan contoh"
-    );
+    ];
   }
 
-  return suggestions;
+  return [
+    "Jelaskan lebih sederhana",
+    "Buat ringkasan",
+    "Berikan contoh"
+  ];
+}
+
+function usePromptSuggestion(text) {
+  input.value = text;
+  input.focus();
+  updateSendButton();
 }
 
 function renderPromptSuggestions(text) {
@@ -412,18 +416,12 @@ function renderPromptSuggestions(text) {
         <button
           type="button"
           class="prompt-suggestion"
-          onclick="usePromptSuggestion(${JSON.stringify(s)})">
+          data-prompt="${s.replace(/"/g, '&quot;')}">
           ${s}
         </button>
-      `).join("")}
+      `).join('')}
     </div>
   `;
-}
-
-function usePromptSuggestion(text) {
-  input.value = text;
-  input.focus();
-  updateSendButton();
 }
 
 // =========================================================
