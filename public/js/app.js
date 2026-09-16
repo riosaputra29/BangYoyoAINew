@@ -5255,6 +5255,30 @@ async function loadProjects() {
 
 }
 
+async function restoreSession() {
+
+  const token =
+    localStorage.getItem('id_token');
+
+  if (!token) {
+    return;
+  }
+
+  // Tampilkan halaman chat
+  showChatScreen();
+
+  // Muat ulang data dari database
+  await loadConversations(true);
+  await loadProjects(true);
+
+  const input =
+    document.getElementById('chat-input');
+
+  if (input) {
+    input.focus();
+  }
+}
+
 async function createProject() {
   const idToken = localStorage.getItem('id_token');
   const name =
