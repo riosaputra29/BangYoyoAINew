@@ -374,78 +374,7 @@ const sendBtn =
 const startVoiceBtn =
   document.getElementById('start-voice-btn');
 
-// =========================================================
-// Prompt Suggestion
-// =========================================================
-function getPromptSuggestions(text) {
 
-  if (/gis|lidar|peta|dem|slope|elevasi/i.test(text)) {
-    return [
-      'Analisis area kritis',
-      'Identifikasi risiko',
-      'Berikan rekomendasi teknis'
-    ];
-  }
-
-  if (/data|laporan|excel|csv|angka|trend/i.test(text)) {
-    return [
-      'Cari anomali',
-      'Analisis trend',
-      'Berikan dampak bisnis'
-    ];
-  }
-
-  return [
-    'Jelaskan lebih sederhana',
-    'Buat ringkasan',
-    'Berikan contoh'
-  ];
-}
-
-
-function renderPromptSuggestions(text) {
-
-  const suggestions =
-    getPromptSuggestions(text);
-
-  const container =
-    document.createElement('div');
-
-  container.className =
-    'prompt-suggestions';
-
-  suggestions.forEach(function(text) {
-
-    const button =
-      document.createElement('button');
-
-    button.type = 'button';
-
-    button.className =
-      'prompt-suggestion';
-
-    button.textContent =
-      text;
-
-    button.addEventListener(
-      'click',
-      function() {
-
-        input.value = text;
-
-        input.focus();
-
-        updateSendButton();
-
-      }
-    );
-
-    container.appendChild(button);
-
-  });
-
-  return container;
-}
 
 // =========================================================
 // DYNAMIC SEND BUTTON
@@ -4065,34 +3994,15 @@ async function processVoiceAudio(
     // SIMPAN AI KE HISTORY
     // ===================================================
 
-    // if(answer){
-
-    //   history.push({
-    //     role: 'assistant',
-    //     content: answer
-    //   });
-
-    // }
-
     if(answer){
 
       history.push({
         role: 'assistant',
         content: answer
       });
-    
-      const suggestions =
-        renderPromptSuggestions(answer);
-    
-      aiRow.appendChild(
-        suggestions
-      );
-    
+
     }
-
     
-
-
     // ===================================================
     // SCROLL
     // ===================================================
