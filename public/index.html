@@ -202,7 +202,7 @@
       <!-- SIDEBAR -->
       <aside id="sidebar">
 
-        <div class="sidebar-top">
+        <!-- <div class="sidebar-top">
           <button id="new-chat-btn" type="button" class="new-chat-button">
             <span class="new-chat-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -222,7 +222,107 @@
             </div>
             <div id="sidebar-chat-list"></div>
           </section>
+        </div> -->
+        
+        <div class="sidebar-top">
+        
+          <button id="new-chat-btn" type="button" class="new-chat-button">
+            <span class="new-chat-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor"
+                   stroke-width="2"
+                   stroke-linecap="round">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+            </span>
+        
+            <span class="new-chat-label">
+              Percakapan baru
+            </span>
+        
+            <span class="new-chat-shortcut">
+              N
+            </span>
+          </button>
+        
+        
+          <!-- PROJECT -->
+          <button
+            id="projects-btn"
+            type="button"
+            class="sidebar-project-button"
+          >
+        
+            <span class="project-icon" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
+              </svg>
+            </span>
+        
+            <span class="project-label">
+              Projects
+            </span>
+        
+            <span class="project-plus">
+              +
+            </span>
+        
+          </button>
+        
         </div>
+        
+        
+        <div class="sidebar-content">
+        
+          <!-- PROJECT LIST -->
+          <section
+            id="projects-section"
+            class="sidebar-group sidebar-projects"
+          >
+        
+            <div class="sidebar-group-head">
+        
+              <span class="sidebar-group-title">
+                Project
+              </span>
+        
+            </div>
+        
+            <div id="sidebar-project-list"></div>
+        
+          </section>
+        
+        
+          <!-- CONVERSATIONS -->
+          <section class="sidebar-group sidebar-conversations">
+        
+            <div class="sidebar-group-head">
+        
+              <span class="sidebar-group-title">
+                Percakapan
+              </span>
+        
+              <span
+                class="sidebar-group-dot"
+                aria-hidden="true"
+              ></span>
+        
+            </div>
+        
+            <div id="sidebar-chat-list"></div>
+        
+          </section>
+        
+        </div>
+
+
 
         <div class="sidebar-footer">
           <div class="sidebar-footer-card">
