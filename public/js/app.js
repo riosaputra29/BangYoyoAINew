@@ -5160,45 +5160,58 @@ async function loadProjects() {
 
       button.addEventListener("click", async () => {
 
-        currentProjectId = project.id;
-        currentConversationId = null;
-        history = [];
-      
-        // Tandai project aktif
-        document.querySelectorAll('.project-item').forEach(item => {
-          item.classList.remove('active');
-        });
-        button.classList.add('active');
-      
-        localStorage.setItem('active_project_id', project.id);
-        localStorage.setItem('active_project_name', project.name || 'Untitled Project');
-      
-        // Tampilkan placeholder halaman project
-        const messages = document.getElementById('messages');
-        if(messages){
-          messages.innerHTML = `
-            <div class="project-page">
-              <div class="project-page-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
-                  <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
-                </svg>
-              </div>
-              <h2>${escapeHtml(project.name || 'Untitled Project')}</h2>
-              <p>Project ini siap digunakan.</p>
-              <button type="button" class="project-start-chat" onclick="document.getElementById('chat-input').focus()">
-                Mulai Percakapan
-              </button>
-            </div>
-          `;
-        }
-      
-        // Sidebar PERCAKAPAN tetap tampil lengkap, TIDAK difilter per project
-        renderConversationList();
-      
-        const chatInput = document.getElementById('chat-input');
-        if(chatInput) chatInput.focus();
-      
-      });
+  currentProjectId = project.id;
+
+  document.querySelectorAll('.project-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  button.classList.add('active');
+
+  localStorage.setItem('active_project_id', project.id);
+  localStorage.setItem('active_project_name', project.name || 'Untitled Project');
+
+  // Cari percakapan milik project ini yang sudah ada di sidebar
+  const projectConversations = conversationsList.filter(
+    c => Number(c.project_id) === Number(project.id)
+  );
+
+  if(projectConversations.length > 0){
+
+    // Ada percakapan lama di project ini → langsung buka yang terbaru
+    currentConversationId = null;   // reset dulu supaya selectConversation tidak skip
+    await selectConversation(projectConversations[0].id);
+
+  }else{
+
+    // Belum ada percakapan di project ini → tampilkan placeholder
+    currentConversationId = null;
+    history = [];
+
+    const messages = document.getElementById('messages');
+    if(messages){
+      messages.innerHTML = `
+        <div class="project-page">
+          <div class="project-page-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
+            </svg>
+          </div>
+          <h2>${escapeHtml(project.name || 'Untitled Project')}</h2>
+          <p>Project ini siap digunakan.</p>
+          <button type="button" class="project-start-chat" onclick="document.getElementById('chat-input').focus()">
+            Mulai Percakapan
+          </button>
+        </div>
+      `;
+    }
+
+    renderConversationList();
+  }
+
+  const chatInput = document.getElementById('chat-input');
+  if(chatInput) chatInput.focus();
+
+});
 
       projectList.appendChild(button);
     });
