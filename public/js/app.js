@@ -255,26 +255,12 @@ window.onload = function(){
       new URLSearchParams(window.location.search).has('magic_token');
 
 
-    if(
-      savedToken &&
-      !isTokenExpired(savedToken)
-    ){
-
-      userProfile =
-        decodeJwt(savedToken);
-
-      showChatScreen();
-
-      loadConversations(true);
-
+    if(savedToken && !isTokenExpired(savedToken)){
+      userProfile = decodeJwt(savedToken);
+      restoreSession();   // ganti showChatScreen() + loadConversations(true) dengan ini
     }else if(!hasMagicToken){
-
-      localStorage.removeItem(
-        'id_token'
-      );
-
+      localStorage.removeItem('id_token');
       google.accounts.id.prompt();
-
     }
 
   }catch(e){
