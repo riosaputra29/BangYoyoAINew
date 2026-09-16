@@ -962,36 +962,24 @@ newChatBtn.addEventListener(
 
     if(
       history.length > 0 &&
-      !confirm(
-        'Mulai percakapan baru? Tampilan chat saat ini akan dikosongkan.'
-      )
+      !confirm('Mulai percakapan baru? Tampilan chat saat ini akan dikosongkan.')
     ){
-
       return;
-
     }
 
-
-    currentConversationId =
-      null;
-
+    currentConversationId = null;
     history = [];
+
+    localStorage.removeItem('active_project_id');   // tambahkan ini
+    localStorage.removeItem('active_project_name');  // tambahkan ini
 
     clearAttachment();
 
-
-    document.getElementById(
-      'messages'
-    ).innerHTML =
-      emptyStateHTML;
-
+    document.getElementById('messages').innerHTML = emptyStateHTML;
 
     renderConversationList();
-
     closeSidebar();
-
     input.focus();
-
   }
 );
 
@@ -4432,17 +4420,20 @@ async function sendMessage(){
 
           },
 
-          body:
+         body:
             JSON.stringify({
-
+          
               messages:
                 trimHistoryForSend(
                   history
                 ),
-
+          
               conversationId:
-                currentConversationId
-
+                currentConversationId,
+          
+              projectId:
+                localStorage.getItem('active_project_id') || null
+          
             })
 
         }
