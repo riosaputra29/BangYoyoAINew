@@ -910,45 +910,22 @@ async function deleteConversationFromSidebar(
 // SELECT CONVERSATION
 // =========================================================
 
-async function selectConversation(
-  conversationId
-){
+async function selectConversation(conversationId){
 
-  if(
-    conversationId ===
-    currentConversationId
-  ){
-
+  if(conversationId === currentConversationId){
     closeSidebar();
-
     return;
-
   }
 
+  currentConversationId = conversationId;
 
-  currentConversationId =
-    conversationId;
-
+  localStorage.removeItem('active_project_id');   // tambahkan ini (opsional, tergantung UX yang kamu mau)
 
   renderConversationList();
-
-
   history = [];
-
-
-  document.getElementById(
-    'messages'
-  ).innerHTML =
-    emptyStateHTML;
-
-
-  await loadChatHistory(
-    conversationId
-  );
-
-
+  document.getElementById('messages').innerHTML = emptyStateHTML;
+  await loadChatHistory(conversationId);
   closeSidebar();
-
 }
 
 
