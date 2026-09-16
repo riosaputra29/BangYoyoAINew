@@ -2694,12 +2694,3 @@ body.sidebar-resizing #sidebar::before {
     animation: none;
   }
 }
-
-#start-voice-btn.speaking {
-  background: #f4f4f4;
-  color: #111;
-}
-
-#start-voice-btn.speaking svg {
-  animation: none;
-}
