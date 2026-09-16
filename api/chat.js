@@ -1020,10 +1020,10 @@ result.push({
   ${memoryText}
   
   - Jika ada "nama: X", panggil user dengan X saat menyapa.
-  - Jangan gunakan nama lain atau menanyakan nama jika sudah ada.
+  - Jangan gunakan nama lain.
   
   IDENTITAS:
-  Jika user langsung bertanya tentang identitas/data pribadinya
+  Jika user langsung bertanya tentang data pribadinya
   (seperti "siapa nama saya" atau "kamu tahu saya siapa"), jangan
   mengungkapkan data dari MEMORY. Jawab tepat:
   "Saya gak bisa jawab, Bos RIO larang share data pribadi."
