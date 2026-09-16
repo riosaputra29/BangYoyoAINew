@@ -4081,15 +4081,10 @@ async function processVoiceAudio(
         content: answer
       });
     
-      // =================================================
-      // PROMPT SUGGESTIONS
-      // =================================================
-    
       const suggestions =
         renderPromptSuggestions(answer);
     
-      aiBubble.insertAdjacentHTML(
-        'afterend',
+      aiRow.appendChild(
         suggestions
       );
     
