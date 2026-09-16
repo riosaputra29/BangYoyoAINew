@@ -4103,6 +4103,10 @@ async function sendMessage(){
   const text =
     input.value.trim();
 
+  if (!text && !pendingAttachment) {
+    return;
+  }
+
 
   const attachment =
     pendingAttachment;
