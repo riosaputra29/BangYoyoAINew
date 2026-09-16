@@ -1231,7 +1231,8 @@ export default async function handler(
 
   const {
     messages,
-    conversationId
+    conversationId,
+    projectId
   } = req.body || {};
 
 
@@ -1302,7 +1303,8 @@ export default async function handler(
     const conv =
       await createConversation(
         userId,
-        title
+        title,
+        projectId || null   // tambahkan ini
       );
 
 
