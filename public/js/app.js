@@ -2833,7 +2833,7 @@ function addRow(
 
 async function loadChatHistory(conversationId){
   const idToken = localStorage.getItem('id_token');
-  if(!idToken || !conversationId) return;
+  if(!idToken ||!conversationId) return;
 
   try{
     const response = await fetch('/api/memories?conversationId=' + encodeURIComponent(conversationId), {
@@ -2848,14 +2848,27 @@ async function loadChatHistory(conversationId){
     const empty = document.getElementById('empty-state');
     if(empty) empty.remove();
 
-    // 1. MATIKAN DULU SCROLL HALUS BIAR INSTANT
+    // 1. MATIKAN SMOOTH BIAR INSTANT KE BAWAH
     messagesEl.style.scrollBehavior = 'auto';
 
-    // 2. RENDER SEMUA CHAT (TANPA ANIMASI)
-    for(const msg of chatHistory){
+    // 2. RENDER SEMUA DENGAN FADE
+    for(let i = 0; i < chatHistory.length; i++){
+      const msg = chatHistory[i];
       const role = msg.role === 'user'? 'user' : 'ai';
       const ts = msg.created_at? new Date(msg.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}) : undefined;
       const bubble = addRow(role, null, ts);
+
+      // FADE IN SMOOTH TAPI GAK NGARUH KE POSISI SCROLL
+      bubble.style.opacity = '0';
+      bubble.animate([
+        { opacity: 0, transform: 'translateY(8px)' },
+        { opacity: 1, transform: 'translateY(0)' }
+      ], {
+        duration: 400,
+        delay: i * 40, // delay pendek biar smooth
+        easing: 'ease-out',
+        fill: 'forwards'
+      });
 
       if(role === 'ai'){
         bubble.innerHTML = renderMarkdown(msg.content);
@@ -2864,13 +2877,11 @@ async function loadChatHistory(conversationId){
         span.textContent = msg.content;
         bubble.appendChild(span);
       }
-      history.push({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.content });
+      history.push({ role: msg.role === 'user'? 'user' : 'assistant', content: msg.content });
     }
 
-    // 3. LANGSUNG TEMBAK KE BAWAH SEBELUM DI-PAINT KE LAYAR
+    // 3. INI KUNCINYA: LANGSUNG TEMBAK BAWAH DULU, BARU FADE JALAN
     messagesEl.scrollTop = messagesEl.scrollHeight;
-
-    // paksa 2x biar gak lompat
     requestAnimationFrame(() => {
       messagesEl.scrollTop = messagesEl.scrollHeight;
     });
@@ -2878,13 +2889,11 @@ async function loadChatHistory(conversationId){
   }catch(e){
     console.error('Gagal memuat riwayat percakapan:', e);
   } finally {
-    // balikin lagi biar chat baru tetap smooth
     setTimeout(() => {
       messagesEl.style.scrollBehavior = 'smooth';
-    }, 100);
+    }, 500);
   }
 }
-
 
 // =========================================================
 // SILENT REAUTH
