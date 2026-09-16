@@ -893,12 +893,38 @@ async function selectConversation(conversationId){
 
   currentConversationId = conversationId;
 
-  localStorage.removeItem('active_project_id');   // tambahkan ini (opsional, tergantung UX yang kamu mau)
+  // Sinkronkan project context sesuai percakapan yang dipilih
+  const conv = conversationsList.find(
+    c => Number(c.id) === Number(conversationId)
+  );
+
+  const convProjectId = conv?.project_id ?? null;
+
+  currentProjectId = convProjectId;
+
+  if(convProjectId){
+    localStorage.setItem('active_project_id', convProjectId);
+  }else{
+    localStorage.removeItem('active_project_id');
+    localStorage.removeItem('active_project_name');
+  }
+
+  // Bersihkan / set ulang highlight folder project di sidebar
+  document.querySelectorAll('.project-item').forEach(item => {
+    item.classList.toggle(
+      'active',
+      Number(item.dataset.projectId) === Number(convProjectId)
+    );
+  });
 
   renderConversationList();
+
   history = [];
+
   document.getElementById('messages').innerHTML = emptyStateHTML;
+
   await loadChatHistory(conversationId);
+
   closeSidebar();
 }
 
