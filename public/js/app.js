@@ -374,6 +374,62 @@ const sendBtn =
 const startVoiceBtn =
   document.getElementById('start-voice-btn');
 
+// =========================================================
+// DYNAMIC SEND BUTTON
+// =========================================================
+
+function updateSendButton() {
+
+  if (!input || !sendBtn) {
+    return;
+  }
+
+  const hasText =
+    input.value.trim().length > 0;
+
+  if (hasText) {
+
+    // Tampilkan tombol kirim
+    sendBtn.classList.add('visible');
+
+    // Sembunyikan Start Voice
+    if (startVoiceBtn) {
+      startVoiceBtn.style.display = 'none';
+    }
+
+  } else {
+
+    // Sembunyikan tombol kirim
+    sendBtn.classList.remove('visible');
+
+    // Tampilkan Start Voice
+    if (startVoiceBtn) {
+      startVoiceBtn.style.display = 'flex';
+    }
+  }
+}
+
+
+// =========================================================
+// DETEKSI SAAT USER MENGETIK
+// =========================================================
+
+if (input) {
+
+  input.addEventListener(
+    'input',
+    updateSendButton
+  );
+
+}
+
+
+// =========================================================
+// KONDISI AWAL
+// =========================================================
+
+updateSendButton();
+
 const messagesEl =
   document.getElementById('messages');
 
@@ -3340,6 +3396,7 @@ async function sendImageGeneration(prompt) {
   }
 
   input.value = '';
+  updateSendButton();
 
   input.style.height = 'auto';
 
@@ -4101,6 +4158,8 @@ async function sendMessage(){
 
 
   input.value = '';
+  updateSendButton();
+  
 
   input.style.height =
     'auto';
