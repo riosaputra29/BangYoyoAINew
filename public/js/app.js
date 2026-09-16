@@ -371,6 +371,9 @@ const input =
 const sendBtn =
   document.getElementById('send-btn');
 
+const startVoiceBtn =
+  document.getElementById('start-voice-btn');
+
 const messagesEl =
   document.getElementById('messages');
 
@@ -3430,6 +3433,606 @@ async function sendImageGeneration(prompt) {
     input.focus();
 
   }
+
+}
+
+
+// function percakapan ai 2 arah
+// =========================================================
+// START VOICE - GROQ WHISPER + AI + SPEECH
+// =========================================================
+
+let voiceRecorder = null;
+let voiceStream = null;
+let voiceChunks = [];
+let voiceRecording = false;
+let voiceProcessing = false;
+
+
+// =========================================================
+// START / STOP RECORDING
+// =========================================================
+
+async function toggleStartVoice(){
+
+  if(voiceProcessing){
+    return;
+  }
+
+  // Kalau sedang merekam → STOP
+  if(voiceRecording){
+    stopStartVoice();
+    return;
+  }
+
+  const idToken =
+    localStorage.getItem('id_token');
+
+  if(!idToken){
+    alert(
+      'Sesi login sudah habis. Silakan login ulang dengan Google.'
+    );
+    return;
+  }
+
+  if(
+    !navigator.mediaDevices ||
+    !navigator.mediaDevices.getUserMedia
+  ){
+    alert(
+      'Browser tidak mendukung akses microphone.'
+    );
+    return;
+  }
+
+  try{
+
+    voiceStream =
+      await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+    voiceChunks = [];
+
+    let mimeType = '';
+
+    if(
+      MediaRecorder.isTypeSupported(
+        'audio/webm;codecs=opus'
+      )
+    ){
+      mimeType =
+        'audio/webm;codecs=opus';
+    }
+    else if(
+      MediaRecorder.isTypeSupported(
+        'audio/webm'
+      )
+    ){
+      mimeType =
+        'audio/webm';
+    }
+    else if(
+      MediaRecorder.isTypeSupported(
+        'audio/ogg;codecs=opus'
+      )
+    ){
+      mimeType =
+        'audio/ogg;codecs=opus';
+    }
+
+    voiceRecorder =
+      mimeType
+        ? new MediaRecorder(
+            voiceStream,
+            { mimeType }
+          )
+        : new MediaRecorder(
+            voiceStream
+          );
+
+
+    // =====================================================
+    // DATA AUDIO
+    // =====================================================
+
+    voiceRecorder.ondataavailable =
+      (event) => {
+
+        if(
+          event.data &&
+          event.data.size > 0
+        ){
+          voiceChunks.push(
+            event.data
+          );
+        }
+
+      };
+
+
+    // =====================================================
+    // RECORDING SELESAI
+    // =====================================================
+
+    voiceRecorder.onstop =
+      async () => {
+
+        try{
+
+          const actualMime =
+            voiceRecorder.mimeType ||
+            mimeType ||
+            'audio/webm';
+
+          const audioBlob =
+            new Blob(
+              voiceChunks,
+              {
+                type: actualMime
+              }
+            );
+
+          // Matikan microphone
+          if(voiceStream){
+
+            voiceStream
+              .getTracks()
+              .forEach(
+                track => track.stop()
+              );
+
+          }
+
+          voiceStream = null;
+          voiceRecorder = null;
+          voiceChunks = [];
+
+          await processVoiceAudio(
+            audioBlob
+          );
+
+        }catch(error){
+
+          console.error(
+            'Voice processing error:',
+            error
+          );
+
+          resetVoiceButton();
+
+          alert(
+            'Gagal memproses suara.'
+          );
+
+        }
+
+      };
+
+
+    voiceRecorder.start();
+
+    voiceRecording = true;
+
+    startVoiceBtn.classList.add(
+      'recording'
+    );
+
+    startVoiceBtn.title =
+      'Stop Voice';
+
+    startVoiceBtn.setAttribute(
+      'aria-label',
+      'Stop Voice'
+    );
+
+    console.log(
+      'Voice recording started.'
+    );
+
+  }catch(error){
+
+    console.error(
+      'Microphone error:',
+      error
+    );
+
+    if(
+      error.name ===
+      'NotAllowedError'
+    ){
+
+      alert(
+        'Akses microphone ditolak. Izinkan microphone pada browser.'
+      );
+
+    }else{
+
+      alert(
+        'Tidak dapat mengakses microphone.'
+      );
+
+    }
+
+  }
+
+}
+
+
+// =========================================================
+// STOP RECORDING
+// =========================================================
+
+function stopStartVoice(){
+
+  if(
+    !voiceRecorder ||
+    voiceRecorder.state === 'inactive'
+  ){
+    return;
+  }
+
+  voiceRecording = false;
+
+  startVoiceBtn.classList.remove(
+    'recording'
+  );
+
+  startVoiceBtn.classList.add(
+    'processing'
+  );
+
+  startVoiceBtn.title =
+    'Processing...';
+
+  startVoiceBtn.setAttribute(
+    'aria-label',
+    'Processing voice'
+  );
+
+  voiceRecorder.stop();
+
+}
+
+
+// =========================================================
+// PROCESS AUDIO
+// =========================================================
+
+async function processVoiceAudio(
+  audioBlob
+){
+
+  voiceProcessing = true;
+
+  try{
+
+    if(!audioBlob || audioBlob.size === 0){
+
+      throw new Error(
+        'Audio kosong.'
+      );
+
+    }
+
+    const idToken =
+      localStorage.getItem(
+        'id_token'
+      );
+
+    if(!idToken){
+
+      throw new Error(
+        'Sesi login sudah habis.'
+      );
+
+    }
+
+
+    console.log(
+      'Mengirim audio ke /api/voice:',
+      audioBlob.size,
+      'bytes'
+    );
+
+
+    // ===================================================
+    // KIRIM KE BACKEND
+    // ===================================================
+
+    const response =
+      await fetch(
+        '/api/voice',
+        {
+          method: 'POST',
+
+          headers: {
+            'Authorization':
+              'Bearer ' + idToken,
+
+            'Content-Type':
+              audioBlob.type ||
+              'audio/webm'
+          },
+
+          body: audioBlob
+        }
+      );
+
+
+    // ===================================================
+    // BACA RESPONSE
+    // ===================================================
+
+    let data = {};
+
+    try{
+
+      data =
+        await response.json();
+
+    }catch(e){
+
+      throw new Error(
+        'Response dari server tidak valid.'
+      );
+
+    }
+
+
+    if(response.status === 401){
+
+      throw new Error(
+        'Sesi login sudah habis. Silakan login ulang.'
+      );
+
+    }
+
+
+    if(!response.ok){
+
+      throw new Error(
+        data.error ||
+        'Voice API gagal.'
+      );
+
+    }
+
+
+    const userText =
+      (data.text || '').trim();
+
+    const answer =
+      (data.answer || '').trim();
+
+
+    if(!userText){
+
+      throw new Error(
+        'Suara tidak berhasil dikenali.'
+      );
+
+    }
+
+
+    // ===================================================
+    // TAMPILKAN USER MESSAGE
+    // ===================================================
+
+    addRow(
+      'user',
+      null
+    )
+    .appendChild(
+      Object.assign(
+        document.createElement(
+          'span'
+        ),
+        {
+          textContent:
+            userText
+        }
+      )
+    );
+
+
+    // ===================================================
+    // SIMPAN KE HISTORY
+    // ===================================================
+
+    history.push({
+      role: 'user',
+      content: userText
+    });
+
+
+    // ===================================================
+    // TAMPILKAN AI
+    // ===================================================
+
+    const aiRow =
+      addRow(
+        'assistant',
+        null
+      );
+
+    const aiBubble =
+      aiRow.querySelector(
+        '.bubble'
+      );
+
+
+    if(aiBubble){
+
+      aiBubble.innerHTML =
+        typeof renderMarkdown ===
+        'function'
+          ? renderMarkdown(answer)
+          : '';
+
+      if(
+        !aiBubble.innerHTML
+      ){
+
+        aiBubble.textContent =
+          answer;
+
+      }
+
+    }
+
+
+    // ===================================================
+    // SIMPAN AI KE HISTORY
+    // ===================================================
+
+    if(answer){
+
+      history.push({
+        role: 'assistant',
+        content: answer
+      });
+
+    }
+
+
+    // ===================================================
+    // SCROLL
+    // ===================================================
+
+    messagesEl.scrollTop =
+      messagesEl.scrollHeight;
+
+
+    // ===================================================
+    // BACA JAWABAN DENGAN SUARA
+    // ===================================================
+
+    speakVoiceAnswer(
+      answer
+    );
+
+
+  }catch(error){
+
+    console.error(
+      'VOICE API ERROR:',
+      error
+    );
+
+    alert(
+      error?.message ||
+      'Terjadi kesalahan pada Voice Mode.'
+    );
+
+  }finally{
+
+    voiceProcessing = false;
+
+    resetVoiceButton();
+
+  }
+
+}
+
+
+// =========================================================
+// TEXT TO SPEECH
+// =========================================================
+
+function speakVoiceAnswer(
+  text
+){
+
+  if(
+    !text ||
+    !('speechSynthesis' in window)
+  ){
+    return;
+  }
+
+
+  try{
+
+    window.speechSynthesis.cancel();
+
+    const utterance =
+      new SpeechSynthesisUtterance(
+        text
+      );
+
+    utterance.lang =
+      'id-ID';
+
+    utterance.rate =
+      1;
+
+    utterance.pitch =
+      1;
+
+    utterance.volume =
+      1;
+
+
+    window.speechSynthesis.speak(
+      utterance
+    );
+
+  }catch(error){
+
+    console.error(
+      'Text-to-speech error:',
+      error
+    );
+
+  }
+
+}
+
+
+// =========================================================
+// RESET BUTTON
+// =========================================================
+
+function resetVoiceButton(){
+
+  voiceRecording = false;
+  voiceProcessing = false;
+
+  if(startVoiceBtn){
+
+    startVoiceBtn.classList.remove(
+      'recording',
+      'processing'
+    );
+
+    startVoiceBtn.title =
+      'Start Voice';
+
+    startVoiceBtn.setAttribute(
+      'aria-label',
+      'Start Voice'
+    );
+
+  }
+
+}
+
+
+// =========================================================
+// BUTTON EVENT
+// =========================================================
+
+if(startVoiceBtn){
+
+  startVoiceBtn.addEventListener(
+    'click',
+    toggleStartVoice
+  );
 
 }
 
