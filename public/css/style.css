@@ -2300,36 +2300,38 @@ body {
   }
 }
 
-#start-voice-btn {
+.start-voice-btn {
   flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+
   transition:
-    background-color 0.2s ease,
-    color 0.2s ease,
-    transform 0.2s ease;
+    opacity 0.2s ease,
+    background-color 0.2s ease;
 }
 
-#start-voice-btn:hover {
-  transform: scale(1.05);
+.start-voice-btn svg {
+  width: 24px;
+  height: 24px;
 }
 
-#start-voice-btn.voice-active {
+.start-voice-btn:hover {
+  opacity: 0.7;
+}
+
+.start-voice-btn.voice-active {
+  opacity: 1;
   background: #c99b4a;
-  color: #fff;
-  animation: voicePulse 1.4s infinite;
-}
-
-@keyframes voicePulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(201, 155, 74, 0.45);
-  }
-
-  70% {
-    box-shadow: 0 0 0 8px rgba(201, 155, 74, 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(201, 155, 74, 0);
-  }
+  color: white;
 }
 
 
