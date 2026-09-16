@@ -3068,4 +3068,27 @@ body.sidebar-resizing #sidebar::before {
   color: var(--accent-light);
 }
 
+.project-item {
+  position: relative;
+}
+
+.project-delete-btn {
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.project-item:hover .project-delete-btn {
+  opacity: 0.6;
+}
+
+.project-delete-btn:hover {
+  opacity: 1 !important;
+  color: #ef4444;
+}
 
