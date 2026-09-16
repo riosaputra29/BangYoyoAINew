@@ -2704,3 +2704,24 @@ body.sidebar-resizing #sidebar::before {
 #start-voice-btn.speaking svg {
   animation: none !important;
 }
+
+.prompt-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.prompt-suggestion {
+  border: 1px solid var(--border-color, #ddd);
+  background: transparent;
+  border-radius: 18px;
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: .2s;
+}
+
+.prompt-suggestion:hover {
+  transform: translateY(-1px);
+}
