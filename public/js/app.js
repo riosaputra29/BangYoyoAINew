@@ -379,30 +379,19 @@ const startVoiceBtn =
 // =========================================================
 
 function updateSendButton() {
+  if (!input || !sendBtn) return;
 
-  if (!input || !sendBtn) {
-    return;
-  }
+  const hasText = input.value.trim().length > 0;
 
-  const hasText =
-    input.value.trim().length > 0;
-
-  if (hasText) {
-
-    // Tampilkan tombol kirim
+  if (hasText && !aiSpeaking) {
     sendBtn.classList.add('visible');
 
-    // Sembunyikan Start Voice
     if (startVoiceBtn) {
       startVoiceBtn.style.display = 'none';
     }
-
   } else {
-
-    // Sembunyikan tombol kirim
     sendBtn.classList.remove('visible');
 
-    // Tampilkan Start Voice
     if (startVoiceBtn) {
       startVoiceBtn.style.display = 'flex';
     }
@@ -3504,6 +3493,7 @@ let voiceStream = null;
 let voiceChunks = [];
 let voiceRecording = false;
 let voiceProcessing = false;
+let aiSpeaking = false;
 
 
 // =========================================================
@@ -3717,6 +3707,61 @@ async function toggleStartVoice(){
 
   }
 
+}
+
+const startVoiceDefaultIcon =
+  startVoiceBtn ? startVoiceBtn.innerHTML : '';
+
+function setAIVoiceButtonSpeaking(active) {
+
+  if (!startVoiceBtn) return;
+
+  aiSpeaking = active;
+
+  if (active) {
+
+    startVoiceBtn.style.display = 'flex';
+
+    startVoiceBtn.innerHTML = `
+      <svg
+        viewBox="0 0 24 24"
+        width="20"
+        height="20"
+        fill="currentColor"
+        aria-hidden="true">
+        <rect x="7" y="7" width="10" height="10" rx="2"></rect>
+      </svg>
+    `;
+
+    startVoiceBtn.classList.add('speaking');
+
+    startVoiceBtn.title = 'Stop AI Voice';
+
+    startVoiceBtn.setAttribute(
+      'aria-label',
+      'Stop AI Voice'
+    );
+
+  } else {
+
+    startVoiceBtn.innerHTML =
+      startVoiceDefaultIcon;
+
+    startVoiceBtn.classList.remove(
+      'speaking'
+    );
+
+    startVoiceBtn.title =
+      'Start Voice';
+
+    startVoiceBtn.setAttribute(
+      'aria-label',
+      'Start Voice'
+    );
+
+  }
+
+  updateSendButton();
 }
 
 
@@ -4001,53 +4046,52 @@ async function processVoiceAudio(
 // TEXT TO SPEECH
 // =========================================================
 
-function speakVoiceAnswer(
-  text
-){
+function speakVoiceAnswer(text) {
 
-  if(
+  if (
     !text ||
     !('speechSynthesis' in window)
-  ){
+  ) {
     return;
   }
 
-
-  try{
+  try {
 
     window.speechSynthesis.cancel();
 
     const utterance =
-      new SpeechSynthesisUtterance(
-        text
-      );
+      new SpeechSynthesisUtterance(text);
 
-    utterance.lang =
-      'id-ID';
+    utterance.lang = 'id-ID';
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
 
-    utterance.rate =
-      1;
+    utterance.onstart = function () {
+      setAIVoiceButtonSpeaking(true);
+    };
 
-    utterance.pitch =
-      1;
+    utterance.onend = function () {
+      setAIVoiceButtonSpeaking(false);
+    };
 
-    utterance.volume =
-      1;
-
+    utterance.onerror = function () {
+      setAIVoiceButtonSpeaking(false);
+    };
 
     window.speechSynthesis.speak(
       utterance
     );
 
-  }catch(error){
+  } catch (error) {
 
     console.error(
       'Text-to-speech error:',
       error
     );
 
+    setAIVoiceButtonSpeaking(false);
   }
-
 }
 
 
@@ -4084,11 +4128,35 @@ function resetVoiceButton(){
 // BUTTON EVENT
 // =========================================================
 
-if(startVoiceBtn){
+// if(startVoiceBtn){
+
+//   startVoiceBtn.addEventListener(
+//     'click',
+//     toggleStartVoice
+//   );
+
+// }
+
+if (startVoiceBtn) {
 
   startVoiceBtn.addEventListener(
     'click',
-    toggleStartVoice
+    function () {
+
+      // AI sedang bicara → tombol menjadi STOP
+      if (aiSpeaking) {
+
+        window.speechSynthesis.cancel();
+
+        setAIVoiceButtonSpeaking(false);
+
+        return;
+      }
+
+      // Normal → Voice Mode
+      toggleStartVoice();
+
+    }
   );
 
 }
