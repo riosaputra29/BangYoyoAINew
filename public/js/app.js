@@ -5120,6 +5120,47 @@ input.addEventListener(
   };
 })();
 
+// =========================================================
+// PROJECTS
+// =========================================================
+
+const projectsBtn =
+  document.getElementById('projects-btn');
+
+if (projectsBtn) {
+
+  projectsBtn.addEventListener(
+    'click',
+    function () {
+
+      const name =
+        prompt('Nama Project:');
+
+      if (!name || !name.trim()) {
+        return;
+      }
+
+      const project =
+        document.createElement('button');
+
+      project.type = 'button';
+      project.className = 'project-item';
+      project.textContent = name.trim();
+
+      const projectList =
+        document.getElementById(
+          'sidebar-project-list'
+        );
+
+      if (projectList) {
+        projectList.appendChild(project);
+      }
+
+    }
+  );
+
+}
+
 
 // =========================================================
 // AUTO RESIZE TEXTAREA
