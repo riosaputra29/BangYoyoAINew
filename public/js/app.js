@@ -5156,6 +5156,57 @@ async function loadProjects() {
       const nameElement = button.querySelector(".project-item-name");
       nameElement.textContent = project.name || "Untitled Project";
 
+      const deleteBtn = button.querySelector(".project-delete-btn");
+      deleteBtn.addEventListener("click", async (e) => {
+      
+        e.preventDefault();
+        e.stopPropagation();
+      
+        const confirmed = confirm(
+          `Hapus project "${project.name || 'Untitled Project'}"?\n\nPercakapan di dalamnya tidak akan terhapus, hanya dikeluarkan dari project.`
+        );
+      
+        if (!confirmed) return;
+      
+        const idToken = localStorage.getItem('id_token');
+        if (!idToken) {
+          alert('Sesi login sudah habis. Silakan login kembali.');
+          return;
+        }
+      
+        try {
+      
+          const response = await fetch(
+            '/api/projects?projectId=' + encodeURIComponent(project.id),
+            {
+              method: 'DELETE',
+              headers: { 'Authorization': 'Bearer ' + idToken }
+            }
+          );
+      
+          const data = await response.json().catch(() => ({}));
+      
+          if (!response.ok) {
+            throw new Error(data.error || 'Gagal menghapus project.');
+          }
+      
+          if (Number(currentProjectId) === Number(project.id)) {
+            currentProjectId = null;
+            localStorage.removeItem('active_project_id');
+            localStorage.removeItem('active_project_name');
+            document.getElementById('messages').innerHTML = emptyStateHTML;
+          }
+      
+          await loadConversations(true);
+          await loadProjects();
+      
+        } catch (err) {
+          console.error('Delete project error:', err);
+          alert(err.message || 'Gagal menghapus project.');
+        }
+      
+      });
+
       button.addEventListener("click", async () => {
 
   currentProjectId = project.id;
