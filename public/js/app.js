@@ -378,50 +378,73 @@ const startVoiceBtn =
 // Prompt Suggestion
 // =========================================================
 function getPromptSuggestions(text) {
+
   if (/gis|lidar|peta|dem|slope|elevasi/i.test(text)) {
     return [
-      "Analisis area kritis",
-      "Identifikasi risiko",
-      "Berikan rekomendasi teknis"
+      'Analisis area kritis',
+      'Identifikasi risiko',
+      'Berikan rekomendasi teknis'
     ];
   }
 
   if (/data|laporan|excel|csv|angka|trend/i.test(text)) {
     return [
-      "Cari anomali",
-      "Analisis trend",
-      "Berikan dampak bisnis"
+      'Cari anomali',
+      'Analisis trend',
+      'Berikan dampak bisnis'
     ];
   }
 
   return [
-    "Jelaskan lebih sederhana",
-    "Buat ringkasan",
-    "Berikan contoh"
+    'Jelaskan lebih sederhana',
+    'Buat ringkasan',
+    'Berikan contoh'
   ];
 }
 
-function usePromptSuggestion(text) {
-  input.value = text;
-  input.focus();
-  updateSendButton();
-}
 
 function renderPromptSuggestions(text) {
-  const suggestions = getPromptSuggestions(text);
 
-  return `
-    <div class="prompt-suggestions">
-      ${suggestions.map(s => `
-        <button
-          type="button"
-          class="prompt-suggestion"
-          data-prompt="${s.replace(/"/g, '&quot;')}">
-          ${s}
-        </button>
-      `).join('')}
-    </div>
-  `;
+  const suggestions =
+    getPromptSuggestions(text);
+
+  const container =
+    document.createElement('div');
+
+  container.className =
+    'prompt-suggestions';
+
+  suggestions.forEach(function(text) {
+
+    const button =
+      document.createElement('button');
+
+    button.type = 'button';
+
+    button.className =
+      'prompt-suggestion';
+
+    button.textContent =
+      text;
+
+    button.addEventListener(
+      'click',
+      function() {
+
+        input.value = text;
+
+        input.focus();
+
+        updateSendButton();
+
+      }
+    );
+
+    container.appendChild(button);
+
+  });
+
+  return container;
 }
 
 // =========================================================
