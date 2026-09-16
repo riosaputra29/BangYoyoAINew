@@ -5112,120 +5112,101 @@ input.addEventListener(
 // =========================================================
 
 async function loadProjects() {
-  const idToken = localStorage.getItem('id_token');
-  const projectList =
-    document.getElementById(
-      "sidebar-project-list"
-    );
+  const idToken = localStorage.getItem("id_token");
+  const projectList = document.getElementById("sidebar-project-list");
 
   if (!projectList) return;
 
+  // Belum login
+  if (!idToken) {
+    projectList.innerHTML = "";
+    return;
+  }
 
+  // Loading
   projectList.innerHTML = `
     <div class="project-loading">
       Memuat project...
     </div>
   `;
 
-
   try {
+    const response = await fetch("/api/projects", {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${idToken}`,
+        "Content-Type": "application/json"
+      }
+    });
 
-    const response =
-      await fetch("/api/projects", {
-        method: "GET",
-        headers: {
-          Authorization:
-            'Bearer ' + localStorage.getItem('id_token')
-        }
-      });
-
-
-    const data =
-      await response.json();
-
+    const data = await response.json();
 
     if (!response.ok || !data.success) {
       throw new Error(
-        data.error ||
-        "Gagal mengambil project"
+        data.error || "Gagal mengambil project"
       );
     }
 
-
+    // Bersihkan daftar lama
     projectList.innerHTML = "";
 
-
-    if (!data.projects ||
-        data.projects.length === 0) {
-
+    // Tidak ada project
+    if (!Array.isArray(data.projects) || data.projects.length === 0) {
       projectList.innerHTML = `
         <div class="project-empty">
           Belum ada project
         </div>
       `;
-
       return;
     }
 
+    // Render project
+    data.projects.forEach((project) => {
+      const button = document.createElement("button");
 
-    data.projects.forEach(
-      function(project) {
+      button.type = "button";
+      button.className = "project-item";
+      button.dataset.projectId = project.id;
 
-        const button =
-          document.createElement("button");
+      button.innerHTML = `
+        <span class="project-item-icon">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
+          </svg>
+        </span>
 
-        button.type = "button";
+        <span class="project-item-name"></span>
+      `;
 
-        button.className =
-          "project-item";
+      // Lebih aman daripada innerHTML + escapeHtml()
+      const nameElement =
+        button.querySelector(".project-item-name");
 
-        button.dataset.projectId =
-          project.id;
+      nameElement.textContent =
+        project.name || "Untitled Project";
 
-        button.innerHTML = `
-          <span class="project-item-icon">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-            >
-              <path
-                d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"
-              />
-            </svg>
-          </span>
-
-          <span class="project-item-name">
-            ${escapeHtml(project.name)}
-          </span>
-        `;
-
-
-        button.addEventListener(
-          "click",
-          function() {
-
-            console.log(
-              "Project dipilih:",
-              project.id
-            );
-
-            // Nanti conversation project
-            // akan dimuat di sini.
-
-          }
+      button.addEventListener("click", () => {
+        console.log(
+          "Project dipilih:",
+          project.id
         );
 
+        // Nanti di sini kita load conversation
+        // berdasarkan project.id
+      });
 
-        projectList.appendChild(button);
-
-      }
-    );
-
+      projectList.appendChild(button);
+    });
 
   } catch (error) {
-
     console.error(
       "Load projects error:",
       error
@@ -5236,9 +5217,7 @@ async function loadProjects() {
         Gagal memuat project
       </div>
     `;
-
   }
-
 }
 
 async function restoreSession() {
