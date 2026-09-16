@@ -5126,7 +5126,7 @@ input.addEventListener(
 // =========================================================
 
 async function loadProjects() {
-
+  const idToken = localStorage.getItem('id_token');
   const projectList =
     document.getElementById(
       "sidebar-project-list"
@@ -5256,7 +5256,7 @@ async function loadProjects() {
 }
 
 async function createProject() {
-
+  const idToken = localStorage.getItem('id_token');
   const name =
     prompt("Nama Project:");
 
