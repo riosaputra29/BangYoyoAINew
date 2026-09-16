@@ -2831,131 +2831,58 @@ function addRow(
 // LOAD CHAT HISTORY
 // =========================================================
 
-async function loadChatHistory(
-  conversationId
-){
-
-  const idToken =
-    localStorage.getItem(
-      'id_token'
-    );
-
-
-  if(
-    !idToken ||
-    !conversationId
-  )
-    return;
-
+async function loadChatHistory(conversationId){
+  const idToken = localStorage.getItem('id_token');
+  if(!idToken || !conversationId) return;
 
   try{
+    const response = await fetch('/api/memories?conversationId=' + encodeURIComponent(conversationId), {
+      headers:{ 'Authorization': 'Bearer ' + idToken }
+    });
+    if(!response.ok) return;
 
-    const response =
-      await fetch(
-        '/api/memories?conversationId=' +
-        encodeURIComponent(
-          conversationId
-        ),
-        {
-          headers:{
-            'Authorization':
-              'Bearer ' + idToken
-          }
-        }
-      );
+    const data = await response.json();
+    const chatHistory = Array.isArray(data.chatHistory)? data.chatHistory : [];
+    if(chatHistory.length === 0) return;
 
+    const empty = document.getElementById('empty-state');
+    if(empty) empty.remove();
 
-    if(!response.ok)
-      return;
+    // 1. MATIKAN DULU SCROLL HALUS BIAR INSTANT
+    messagesEl.style.scrollBehavior = 'auto';
 
+    // 2. RENDER SEMUA CHAT (TANPA ANIMASI)
+    for(const msg of chatHistory){
+      const role = msg.role === 'user'? 'user' : 'ai';
+      const ts = msg.created_at? new Date(msg.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}) : undefined;
+      const bubble = addRow(role, null, ts);
 
-    const data =
-      await response.json();
-
-
-    const chatHistory =
-      Array.isArray(
-        data.chatHistory
-      )
-      ? data.chatHistory
-      : [];
-
-
-    if(
-      chatHistory.length === 0
-    )
-      return;
-
-
-    const empty =
-      document.getElementById(
-        'empty-state'
-      );
-
-
-    if(empty)
-      empty.remove();
-
-for(let i = 0; i < chatHistory.length; i++){
-  const msg = chatHistory[i];
-  const role = msg.role === 'user'? 'user' : 'ai';
-  const ts = msg.created_at? new Date(msg.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}) : undefined;
-
-  const bubble = addRow(role, null, ts);
-
-  bubble.animate([
-    { opacity: 0, transform: 'translateY(10px)' },
-    { opacity: 1, transform: 'translateY(0)' }
-  ], { duration: 350, delay: i * 60, fill: 'both' });
-
-  if(role === 'ai'){
-    bubble.innerHTML = renderMarkdown(msg.content);
-    
+      if(role === 'ai'){
+        bubble.innerHTML = renderMarkdown(msg.content);
       }else{
-
-        const span =
-          document.createElement(
-            'span'
-          );
-
-        span.textContent =
-          msg.content;
-
-        bubble.appendChild(
-          span
-        );
-
+        const span = document.createElement('span');
+        span.textContent = msg.content;
+        bubble.appendChild(span);
       }
-
-
-      history.push({
-
-        role:
-          msg.role === 'user'
-            ? 'user'
-            : 'assistant',
-
-        content:
-          msg.content
-
-      });
-
+      history.push({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.content });
     }
 
+    // 3. LANGSUNG TEMBAK KE BAWAH SEBELUM DI-PAINT KE LAYAR
+    messagesEl.scrollTop = messagesEl.scrollHeight;
 
-    messagesEl.scrollTop =
-      messagesEl.scrollHeight;
-
+    // paksa 2x biar gak lompat
+    requestAnimationFrame(() => {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
 
   }catch(e){
-
-    console.error(
-      'Gagal memuat riwayat percakapan:',
-      e
-    );
-
+    console.error('Gagal memuat riwayat percakapan:', e);
+  } finally {
+    // balikin lagi biar chat baru tetap smooth
+    setTimeout(() => {
+      messagesEl.style.scrollBehavior = 'smooth';
+    }, 100);
   }
-
 }
 
 
