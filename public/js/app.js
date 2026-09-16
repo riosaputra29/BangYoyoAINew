@@ -4042,14 +4042,37 @@ async function processVoiceAudio(
     // SIMPAN AI KE HISTORY
     // ===================================================
 
+    // if(answer){
+
+    //   history.push({
+    //     role: 'assistant',
+    //     content: answer
+    //   });
+
+    // }
+
     if(answer){
 
       history.push({
         role: 'assistant',
         content: answer
       });
-
+    
+      // =================================================
+      // PROMPT SUGGESTIONS
+      // =================================================
+    
+      const suggestions =
+        renderPromptSuggestions(answer);
+    
+      aiBubble.insertAdjacentHTML(
+        'afterend',
+        suggestions
+      );
+    
     }
+
+    
 
 
     // ===================================================
