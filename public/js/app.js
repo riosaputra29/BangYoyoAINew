@@ -125,6 +125,7 @@ function handleCredentialResponse(response){
   showChatScreen();
 
   loadConversations(true);
+  loadProjects();
 
   document.getElementById(
     'chat-input'
