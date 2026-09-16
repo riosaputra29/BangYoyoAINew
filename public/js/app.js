@@ -4084,13 +4084,25 @@ function resetVoiceButton(){
 // BUTTON EVENT
 // =========================================================
 
-if(startVoiceBtn){
+if (startVoiceBtn) {
 
   startVoiceBtn.addEventListener(
     'click',
-    toggleStartVoice
-  );
+    () => {
 
+      // Kalau AI sedang bicara,
+      // klik tombol = STOP
+      if (aiSpeaking) {
+        stopAIVoice();
+        return;
+      }
+
+      // Kalau tidak sedang bicara,
+      // jalankan Voice Mode seperti biasa
+      toggleStartVoice();
+
+    }
+  );
 }
 
 
@@ -4917,6 +4929,105 @@ input.addEventListener(
   });
 
 })();
+
+// =========================================================
+// VOICE OUTPUT CONTROL
+// =========================================================
+
+let aiSpeaking = false;
+
+function setSpeakingState(active) {
+
+  aiSpeaking = active;
+
+  if (!startVoiceBtn) {
+    return;
+  }
+
+  if (active) {
+
+    startVoiceBtn.classList.add('speaking');
+
+    startVoiceBtn.title = 'Stop AI Voice';
+    startVoiceBtn.setAttribute(
+      'aria-label',
+      'Stop AI Voice'
+    );
+
+  } else {
+
+    startVoiceBtn.classList.remove('speaking');
+
+    startVoiceBtn.title = 'Start Voice';
+    startVoiceBtn.setAttribute(
+      'aria-label',
+      'Start Voice'
+    );
+  }
+}
+
+
+function stopAIVoice() {
+
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+
+  setSpeakingState(false);
+}
+
+
+// =========================================================
+// SPEAK AI ANSWER
+// =========================================================
+
+function speakVoiceAnswer(text) {
+
+  if (
+    !text ||
+    !('speechSynthesis' in window)
+  ) {
+    return;
+  }
+
+  try {
+
+    window.speechSynthesis.cancel();
+
+    const utterance =
+      new SpeechSynthesisUtterance(text);
+
+    utterance.lang = 'id-ID';
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    utterance.onstart = () => {
+      setSpeakingState(true);
+    };
+
+    utterance.onend = () => {
+      setSpeakingState(false);
+    };
+
+    utterance.onerror = () => {
+      setSpeakingState(false);
+    };
+
+    window.speechSynthesis.speak(
+      utterance
+    );
+
+  } catch (error) {
+
+    console.error(
+      'Text-to-speech error:',
+      error
+    );
+
+    setSpeakingState(false);
+  }
+}
 
 
 // =========================================================
