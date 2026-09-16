@@ -1,4 +1,3 @@
-
 import { OAuth2Client } from "google-auth-library";
 import { sql } from "../lib/db.js";
 
@@ -118,6 +117,62 @@ export default async function handler(req, res) {
       return res.status(201).json({
         success: true,
         project: rows[0]
+      });
+    }
+
+
+    // =========================
+    // DELETE PROJECT
+    // =========================
+
+    if (req.method === "DELETE") {
+
+      const projectId =
+        req.query?.projectId ||
+        req.body?.projectId;
+
+      if (!projectId) {
+
+        return res.status(400).json({
+          success: false,
+          error: "projectId wajib diisi"
+        });
+
+      }
+
+
+      // Lepaskan percakapan dari project ini —
+      // percakapan tidak ikut terhapus, cuma jadi
+      // percakapan biasa (project_id = null) lagi.
+      await sql`
+        UPDATE conversations
+        SET project_id = NULL
+        WHERE user_id = ${userId}
+          AND project_id = ${Number(projectId)}
+      `;
+
+
+      const rows = await sql`
+        DELETE FROM projects
+        WHERE id = ${Number(projectId)}
+          AND user_id = ${userId}
+        RETURNING id
+      `;
+
+
+      if (rows.length === 0) {
+
+        return res.status(404).json({
+          success: false,
+          error: "Project tidak ditemukan atau bukan milik user."
+        });
+
+      }
+
+
+      return res.status(200).json({
+        success: true,
+        message: "Project berhasil dihapus."
       });
     }
 
