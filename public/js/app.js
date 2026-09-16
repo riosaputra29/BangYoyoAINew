@@ -5149,7 +5149,7 @@ async function loadProjects() {
         method: "GET",
         headers: {
           Authorization:
-            'Bearer ' + idToken
+            'Bearer ' + localStorage.getItem('id_token')
         }
       });
 
