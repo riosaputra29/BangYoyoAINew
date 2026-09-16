@@ -60,26 +60,32 @@ export default async function handler(req, res) {
   // Ambil semua percakapan user
   // ==========================================
   if (req.method === "GET") {
-
+  
     try {
-
-      const conversations = await getConversations(userId);
-
+  
+      const { projectId } = req.query;
+  
+      const conversations = await getConversations(
+        userId,
+        projectId ? Number(projectId) : null
+      );
+  
       res.status(200).json({
         conversations
       });
-
+  
     } catch (err) {
-
+  
       console.error("Get conversations error:", err);
-
+  
       res.status(500).json({
         error: "Gagal mengambil daftar percakapan."
       });
     }
-
+  
     return;
   }
+  
 
 
   // ==========================================
@@ -87,29 +93,30 @@ export default async function handler(req, res) {
   // Buat percakapan baru
   // ==========================================
   if (req.method === "POST") {
-
+  
     try {
-
-      const { title } = req.body || {};
-
+  
+      const { title, projectId } = req.body || {};
+  
       const conversation = await createConversation(
         userId,
-        title || "Percakapan baru"
+        title || "Percakapan baru",
+        projectId || null
       );
-
+  
       res.status(200).json({
         conversation
       });
-
+  
     } catch (err) {
-
+  
       console.error("Create conversation error:", err);
-
+  
       res.status(500).json({
         error: "Gagal membuat percakapan baru."
       });
     }
-
+  
     return;
   }
 
