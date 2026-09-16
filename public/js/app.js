@@ -933,7 +933,7 @@ async function selectConversation(conversationId){
 // NEW CHAT
 // =========================================================
 
-newChatBtn.addEventListener('click', () => {
+newChatBtn.addEventListener('click', async () => {
 
   if(
     history.length > 0 &&
@@ -943,24 +943,23 @@ newChatBtn.addEventListener('click', () => {
   }
 
   currentConversationId = null;
-  currentProjectId = null;              // tambahkan ini
+  currentProjectId = null;
 
   history = [];
 
-  localStorage.removeItem('active_project_id');   // tambahkan ini
-  localStorage.removeItem('active_project_name'); // tambahkan ini
+  localStorage.removeItem('active_project_id');
+  localStorage.removeItem('active_project_name');
 
   document.querySelectorAll('.project-item').forEach(item => {
-    item.classList.remove('active');               // tambahkan ini
+    item.classList.remove('active');
   });
 
   clearAttachment();
 
   document.getElementById('messages').innerHTML = emptyStateHTML;
 
-  loadConversations(false);   // reload daftar percakapan TANPA filter project
+  await loadConversations(false);   // tunggu sampai selesai — ini sudah otomatis render list
 
-  renderConversationList();
   closeSidebar();
   input.focus();
 });
