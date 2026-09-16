@@ -2896,59 +2896,21 @@ async function loadChatHistory(
     if(empty)
       empty.remove();
 
+for(let i = 0; i < chatHistory.length; i++){
+  const msg = chatHistory[i];
+  const role = msg.role === 'user'? 'user' : 'ai';
+  const ts = msg.created_at? new Date(msg.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}) : undefined;
 
-    for(
-      const msg of chatHistory
-    ){
+  const bubble = addRow(role, null, ts);
 
-      const role =
-        msg.role === 'user'
-          ? 'user'
-          : 'ai';
+  bubble.animate([
+    { opacity: 0, transform: 'translateY(10px)' },
+    { opacity: 1, transform: 'translateY(0)' }
+  ], { duration: 350, delay: i * 60, fill: 'both' });
 
-
-      const ts =
-        msg.created_at
-
-          ? new Date(
-              msg.created_at
-            ).toLocaleTimeString(
-              'id-ID',
-              {
-                hour:'2-digit',
-                minute:'2-digit'
-              }
-            )
-
-          : undefined;
-
-
-      //const bubble =
-       // addRow(
-          //role,
-      //  null,
-       //   ts
-        //);
-      
-      const bubble =
-        addRow(
-          role,
-          null,
-          ts
-        );
-
-      // --- TAMBAHIN INI 2 BARIS BUAT SOFT FADE IN ---
-      bubble.classList.add('history-fade');
-      bubble.style.animationDelay = `${i * 70}ms`;
-      // ---------------------------------------------
-
-      if(role === 'ai'){
-
-        bubble.innerHTML =
-          renderMarkdown(
-            msg.content
-          );
-
+  if(role === 'ai'){
+    bubble.innerHTML = renderMarkdown(msg.content);
+    
       }else{
 
         const span =
