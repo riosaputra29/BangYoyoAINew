@@ -2301,7 +2301,7 @@ body {
 }
 
 /* =========================================================
-   START VOICE BUTTON
+   START VOICE
    ========================================================= */
 
 #start-voice-btn {
@@ -2321,66 +2321,64 @@ body {
   border-radius: 999px;
 
   background: transparent;
-  color: var(--text-color, #f4f4f4);
+  color: var(--text);
 
   cursor: pointer;
 
   transition:
-    opacity 0.2s ease,
     background-color 0.2s ease,
+    opacity 0.2s ease,
     transform 0.15s ease;
 }
 
-/* Hover seperti tombol composer */
 #start-voice-btn:hover {
-  opacity: 0.7;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255,255,255,0.06);
 }
 
-/* Saat ditekan */
 #start-voice-btn:active {
   transform: scale(0.94);
 }
 
-/* Fokus keyboard */
 #start-voice-btn:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline: 2px solid rgba(255,255,255,0.35);
   outline-offset: 2px;
 }
 
-/* Icon */
 #start-voice-btn svg {
   width: 24px;
   height: 24px;
-
   display: block;
-
   fill: currentColor;
-  color: currentColor;
 }
 
-/* =========================================================
-   COMPOSER BUTTONS
-   ========================================================= */
+/* Saat sedang merekam */
 
-.composer-buttons {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+#start-voice-btn.recording {
+  background: rgba(201,155,74,0.16);
+  color: var(--accent-light);
 }
 
-/* Jangan mengubah tombol Voice-to-Text lama */
-#voice-btn {
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  min-height: 36px;
+#start-voice-btn.recording svg {
+  animation: voicePulse 1s ease-in-out infinite;
+}
 
-  display: flex;
-  align-items: center;
-  justify-content: center;
+@keyframes voicePulse {
+  0%,100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 
-  border-radius: 999px;
+  50% {
+    transform: scale(1.12);
+    opacity: 0.65;
+  }
+}
+
+/* Saat processing */
+
+#start-voice-btn.processing {
+  opacity: 0.5;
+  cursor: wait;
 }
 
 
