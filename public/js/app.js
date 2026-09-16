@@ -51,6 +51,10 @@ let conversationsList = [];
 
 let currentConversationId = null;
 
+let currentProjectId = null;   // tambahkan ini
+
+
+
 
 // =========================================================
 // JWT
@@ -544,71 +548,41 @@ sidebarBackdrop.addEventListener(
 // LOAD CONVERSATIONS
 // =========================================================
 
-async function loadConversations(
-  selectFirst
-){
+async function loadConversations(selectFirst, projectId = null){
 
-  const idToken =
-    localStorage.getItem(
-      'id_token'
-    );
-
+  const idToken = localStorage.getItem('id_token');
   if(!idToken) return;
-
 
   try{
 
-    const response =
-      await fetch(
-        '/api/conversations',
-        {
-          headers:{
-            'Authorization':
-              'Bearer ' + idToken
-          }
-        }
-      );
+    const url = projectId
+      ? '/api/conversations?projectId=' + encodeURIComponent(projectId)
+      : '/api/conversations';
 
+    const response = await fetch(url, {
+      headers: { 'Authorization': 'Bearer ' + idToken }
+    });
 
     if(!response.ok) return;
 
-
-    const data =
-      await response.json();
-
+    const data = await response.json();
 
     conversationsList =
-      Array.isArray(
-        data.conversations
-      )
-      ? data.conversations
-      : [];
-
+      Array.isArray(data.conversations) ? data.conversations : [];
 
     renderConversationList();
-
 
     if(
       selectFirst &&
       conversationsList.length > 0 &&
       currentConversationId === null
     ){
-
-      await selectConversation(
-        conversationsList[0].id
-      );
-
+      await selectConversation(conversationsList[0].id);
     }
 
   }catch(e){
-
-    console.error(
-      'Gagal memuat daftar percakapan:',
-      e
-    );
-
+    console.error('Gagal memuat daftar percakapan:', e);
   }
-
 }
 
 
@@ -933,32 +907,37 @@ async function selectConversation(conversationId){
 // NEW CHAT
 // =========================================================
 
-newChatBtn.addEventListener(
-  'click',
-  () => {
+newChatBtn.addEventListener('click', () => {
 
-    if(
-      history.length > 0 &&
-      !confirm('Mulai percakapan baru? Tampilan chat saat ini akan dikosongkan.')
-    ){
-      return;
-    }
-
-    currentConversationId = null;
-    history = [];
-
-    localStorage.removeItem('active_project_id');   // tambahkan ini
-    localStorage.removeItem('active_project_name');  // tambahkan ini
-
-    clearAttachment();
-
-    document.getElementById('messages').innerHTML = emptyStateHTML;
-
-    renderConversationList();
-    closeSidebar();
-    input.focus();
+  if(
+    history.length > 0 &&
+    !confirm('Mulai percakapan baru? Tampilan chat saat ini akan dikosongkan.')
+  ){
+    return;
   }
-);
+
+  currentConversationId = null;
+  currentProjectId = null;              // tambahkan ini
+
+  history = [];
+
+  localStorage.removeItem('active_project_id');   // tambahkan ini
+  localStorage.removeItem('active_project_name'); // tambahkan ini
+
+  document.querySelectorAll('.project-item').forEach(item => {
+    item.classList.remove('active');               // tambahkan ini
+  });
+
+  clearAttachment();
+
+  document.getElementById('messages').innerHTML = emptyStateHTML;
+
+  loadConversations(false);   // reload daftar percakapan TANPA filter project
+
+  renderConversationList();
+  closeSidebar();
+  input.focus();
+});
 
 
 // =========================================================
@@ -4408,8 +4387,7 @@ async function sendMessage(){
               conversationId:
                 currentConversationId,
           
-              projectId:
-                localStorage.getItem('active_project_id') || null
+              projectId:currentProjectId
           
             })
 
@@ -5161,81 +5139,47 @@ async function loadProjects() {
       nameElement.textContent =
         project.name || "Untitled Project";
 
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
 
-      console.log("Project dipilih:", project.id);
-    
-      // Tandai project yang aktif
-      document
-        .querySelectorAll(".project-item")
-        .forEach(item => {
-          item.classList.remove("active");
-        });
-    
-      button.classList.add("active");
-    
-      // Simpan project aktif
-      localStorage.setItem(
-        "active_project_id",
-        project.id
-      );
-    
-      localStorage.setItem(
-        "active_project_name",
-        project.name || "Untitled Project"
-      );
-    
-      // Tampilkan halaman project
-      const messages = document.getElementById("messages");
-      const emptyState = document.getElementById("empty-state");
-    
-      if (messages) {
-        messages.innerHTML = `
-          <div class="project-page">
-    
-            <div class="project-page-icon">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.7"
-              >
-                <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
-              </svg>
-            </div>
-    
-            <h2>${project.name || "Untitled Project"}</h2>
-    
-            <p>
-              Project ini siap digunakan.
-            </p>
-    
-            <button
-              type="button"
-              class="project-start-chat"
-              onclick="document.getElementById('chat-input').focus()"
-            >
-              Mulai Percakapan
-            </button>
-    
-          </div>
-        `;
-      }
-    
-      // Sembunyikan empty state bawaan
-      if (emptyState) {
-        emptyState.style.display = "none";
-      }
-    
-      // Fokus ke input
-      const chatInput =
-        document.getElementById("chat-input");
-    
-      if (chatInput) {
-        chatInput.focus();
-      }
-    
-    });
+  currentProjectId = project.id;
+  currentConversationId = null;
+  history = [];
+
+  // Tandai project aktif
+  document.querySelectorAll('.project-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  button.classList.add('active');
+
+  localStorage.setItem('active_project_id', project.id);
+  localStorage.setItem('active_project_name', project.name || 'Untitled Project');
+
+  // Tampilkan placeholder dulu
+  const messages = document.getElementById('messages');
+  if(messages){
+    messages.innerHTML = `
+      <div class="project-page">
+        <div class="project-page-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
+          </svg>
+        </div>
+        <h2>${escapeHtml(project.name || 'Untitled Project')}</h2>
+        <p>Project ini siap digunakan.</p>
+        <button type="button" class="project-start-chat" onclick="document.getElementById('chat-input').focus()">
+          Mulai Percakapan
+        </button>
+      </div>
+    `;
+  }
+
+  // Muat percakapan milik project ini ke sidebar
+  await loadConversations(true, project.id);
+
+  const chatInput = document.getElementById('chat-input');
+  if(chatInput) chatInput.focus();
+
+});
 
       projectList.appendChild(button);
     });
@@ -5256,26 +5200,19 @@ async function loadProjects() {
 
 async function restoreSession() {
 
-  const token =
-    localStorage.getItem('id_token');
+  const token = localStorage.getItem('id_token');
+  if (!token) return;
 
-  if (!token) {
-    return;
-  }
-
-  // Tampilkan halaman chat
   showChatScreen();
 
-  // Muat ulang data dari database
-  await loadConversations(true);
-  await loadProjects(true);
+  currentProjectId =
+    localStorage.getItem('active_project_id') || null;   // tambahkan ini
 
-  const input =
-    document.getElementById('chat-input');
+  await loadConversations(true, currentProjectId);         // ubah jadi pakai currentProjectId
+  await loadProjects();
 
-  if (input) {
-    input.focus();
-  }
+  const input = document.getElementById('chat-input');
+  if (input) input.focus();
 }
 
 async function createProject() {
