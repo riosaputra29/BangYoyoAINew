@@ -4046,6 +4046,53 @@ async function processVoiceAudio(
 // TEXT TO SPEECH
 // =========================================================
 
+function cleanTextForSpeech(text) {
+
+  if (!text) return '';
+
+  return text
+
+    // Code block
+    .replace(/```[\s\S]*?```/g, '')
+
+    // Inline code
+    .replace(/`([^`]+)`/g, '$1')
+
+    // Bold / italic
+    .replace(/\*\*\*(.*?)\*\*\*/g, '$1')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/_(.*?)_/g, '$1')
+
+    // Heading
+    .replace(/^#{1,6}\s+/gm, '')
+
+    // Bullet
+    .replace(/^\s*[-*+]\s+/gm, '')
+
+    // Numbered list
+    .replace(/^\s*\d+\.\s+/gm, '')
+
+    // Blockquote
+    .replace(/^\s*>\s?/gm, '')
+
+    // Link markdown
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+
+    // Horizontal line
+    .replace(/^\s*[-*_]{3,}\s*$/gm, '')
+
+    // Sisa karakter Markdown
+    .replace(/[*_~#`>|]/g, '')
+
+    // Rapikan spasi
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+
 function speakVoiceAnswer(text) {
 
   if (
@@ -4059,8 +4106,15 @@ function speakVoiceAnswer(text) {
 
     window.speechSynthesis.cancel();
 
+    const cleanText =
+      cleanTextForSpeech(text);
+
+    if (!cleanText) return;
+
     const utterance =
-      new SpeechSynthesisUtterance(text);
+      new SpeechSynthesisUtterance(
+        cleanText
+      );
 
     utterance.lang = 'id-ID';
     utterance.rate = 1;
