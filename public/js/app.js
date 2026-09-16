@@ -375,6 +375,58 @@ const startVoiceBtn =
   document.getElementById('start-voice-btn');
 
 // =========================================================
+// Prompt Suggestion
+// =========================================================
+function getPromptSuggestions(text) {
+  const suggestions = [];
+
+  if (/gis|lidar|peta|dem|slope|elevasi/i.test(text)) {
+    suggestions.push(
+      "Analisis area kritis",
+      "Identifikasi risiko",
+      "Berikan rekomendasi teknis"
+    );
+  } else if (/data|laporan|excel|csv|angka|trend/i.test(text)) {
+    suggestions.push(
+      "Cari anomali",
+      "Analisis trend",
+      "Berikan dampak bisnis"
+    );
+  } else {
+    suggestions.push(
+      "Jelaskan lebih sederhana",
+      "Buat ringkasan",
+      "Berikan contoh"
+    );
+  }
+
+  return suggestions;
+}
+
+function renderPromptSuggestions(text) {
+  const suggestions = getPromptSuggestions(text);
+
+  return `
+    <div class="prompt-suggestions">
+      ${suggestions.map(s => `
+        <button
+          type="button"
+          class="prompt-suggestion"
+          onclick="usePromptSuggestion(${JSON.stringify(s)})">
+          ${s}
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function usePromptSuggestion(text) {
+  input.value = text;
+  input.focus();
+  updateSendButton();
+}
+
+// =========================================================
 // DYNAMIC SEND BUTTON
 // =========================================================
 
