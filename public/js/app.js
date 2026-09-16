@@ -5135,28 +5135,26 @@ async function loadProjects() {
 
       button.innerHTML = `
         <span class="project-item-icon">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
           </svg>
         </span>
-
+      
         <span class="project-item-name"></span>
+      
+        <button type="button" class="project-delete-btn" title="Hapus project" aria-label="Hapus project">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"/>
+            <path d="M8 6V4h8v2"/>
+            <path d="M19 6l-1 14H6L5 6"/>
+            <path d="M10 11v5"/>
+            <path d="M14 11v5"/>
+          </svg>
+        </button>
       `;
-
-      // Lebih aman daripada innerHTML + escapeHtml()
-      const nameElement =
-        button.querySelector(".project-item-name");
-
-      nameElement.textContent =
-        project.name || "Untitled Project";
+      
+      const nameElement = button.querySelector(".project-item-name");
+      nameElement.textContent = project.name || "Untitled Project";
 
       button.addEventListener("click", async () => {
 
