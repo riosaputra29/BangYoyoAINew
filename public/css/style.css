@@ -2300,3 +2300,60 @@ body {
   }
 }
 
+/* =========================================================
+   VOICE CHAT 2 ARAH
+   ========================================================= */
+
+.voice-status {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 0 0;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--muted-color, #888);
+  user-select: none;
+}
+
+.voice-status.active {
+  display: flex;
+}
+
+.voice-status.listening {
+  color: #d9534f;
+}
+
+.voice-status.thinking {
+  color: #c99b4a;
+}
+
+.voice-status.speaking {
+  color: #4caf50;
+}
+
+#voice-btn.voice-listening {
+  color: #d9534f;
+  animation: voicePulse 1.2s infinite;
+}
+
+#voice-btn.voice-speaking {
+  color: #4caf50;
+}
+
+@keyframes voicePulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.08);
+    opacity: 0.65;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
