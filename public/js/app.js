@@ -5149,7 +5149,7 @@ async function loadProjects() {
         method: "GET",
         headers: {
           Authorization:
-            `Bearer ${GOOGLE_ID_TOKEN}`
+            'Bearer ' + idToken
         }
       });
 
@@ -5276,7 +5276,7 @@ async function createProject() {
             "application/json",
 
           Authorization:
-            `Bearer ${GOOGLE_ID_TOKEN}`
+            'Bearer ' + idToken
         },
 
         body: JSON.stringify({
