@@ -2923,6 +2923,13 @@ async function loadChatHistory(
           : undefined;
 
 
+      //const bubble =
+       // addRow(
+          //role,
+      //  null,
+       //   ts
+        //);
+      
       const bubble =
         addRow(
           role,
@@ -2930,6 +2937,10 @@ async function loadChatHistory(
           ts
         );
 
+      // --- TAMBAHIN INI 2 BARIS BUAT SOFT FADE IN ---
+      bubble.classList.add('history-fade');
+      bubble.style.animationDelay = `${i * 70}ms`;
+      // ---------------------------------------------
 
       if(role === 'ai'){
 
