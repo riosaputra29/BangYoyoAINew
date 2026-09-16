@@ -5120,6 +5120,217 @@ input.addEventListener(
   };
 })();
 
+// =========================================================
+// PROJECTS
+// =========================================================
+
+async function loadProjects() {
+
+  const projectList =
+    document.getElementById(
+      "sidebar-project-list"
+    );
+
+  if (!projectList) return;
+
+
+  projectList.innerHTML = `
+    <div class="project-loading">
+      Memuat project...
+    </div>
+  `;
+
+
+  try {
+
+    const response =
+      await fetch("/api/projects", {
+        method: "GET",
+        headers: {
+          Authorization:
+            `Bearer ${GOOGLE_ID_TOKEN}`
+        }
+      });
+
+
+    const data =
+      await response.json();
+
+
+    if (!response.ok || !data.success) {
+      throw new Error(
+        data.error ||
+        "Gagal mengambil project"
+      );
+    }
+
+
+    projectList.innerHTML = "";
+
+
+    if (!data.projects ||
+        data.projects.length === 0) {
+
+      projectList.innerHTML = `
+        <div class="project-empty">
+          Belum ada project
+        </div>
+      `;
+
+      return;
+    }
+
+
+    data.projects.forEach(
+      function(project) {
+
+        const button =
+          document.createElement("button");
+
+        button.type = "button";
+
+        button.className =
+          "project-item";
+
+        button.dataset.projectId =
+          project.id;
+
+        button.innerHTML = `
+          <span class="project-item-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path
+                d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"
+              />
+            </svg>
+          </span>
+
+          <span class="project-item-name">
+            ${escapeHtml(project.name)}
+          </span>
+        `;
+
+
+        button.addEventListener(
+          "click",
+          function() {
+
+            console.log(
+              "Project dipilih:",
+              project.id
+            );
+
+            // Nanti conversation project
+            // akan dimuat di sini.
+
+          }
+        );
+
+
+        projectList.appendChild(button);
+
+      }
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      "Load projects error:",
+      error
+    );
+
+    projectList.innerHTML = `
+      <div class="project-empty">
+        Gagal memuat project
+      </div>
+    `;
+
+  }
+
+}
+
+async function createProject() {
+
+  const name =
+    prompt("Nama Project:");
+
+  if (!name || !name.trim()) {
+    return;
+  }
+
+
+  try {
+
+    const response =
+      await fetch("/api/projects", {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          Authorization:
+            `Bearer ${GOOGLE_ID_TOKEN}`
+        },
+
+        body: JSON.stringify({
+          name: name.trim()
+        })
+      });
+
+
+    const data =
+      await response.json();
+
+
+    if (!response.ok || !data.success) {
+
+      throw new Error(
+        data.error ||
+        "Gagal membuat project"
+      );
+
+    }
+
+
+    await loadProjects();
+
+
+  } catch (error) {
+
+    console.error(
+      "Create project error:",
+      error
+    );
+
+    alert(
+      error.message ||
+      "Gagal membuat project"
+    );
+
+  }
+
+}
+
+const projectsBtn =
+  document.getElementById(
+    "projects-btn"
+  );
+
+
+if (projectsBtn) {
+
+  projectsBtn.addEventListener(
+    "click",
+    createProject
+  );
+
+}
 
 // =========================================================
 // AUTO RESIZE TEXTAREA
