@@ -5238,10 +5238,22 @@ async function restoreSession() {
   showChatScreen();
 
   currentProjectId =
-    localStorage.getItem('active_project_id') || null;   // tambahkan ini
+    localStorage.getItem('active_project_id') || null;
 
-  await loadConversations(true, currentProjectId);         // ubah jadi pakai currentProjectId
+  // Sidebar PERCAKAPAN selalu load semua, TIDAK difilter project
+  await loadConversations(true);
+
   await loadProjects();
+
+  // Kalau sebelumnya sedang buka project, tandai foldernya aktif
+  if(currentProjectId){
+    setTimeout(() => {
+      const btn = document.querySelector(
+        `.project-item[data-project-id="${currentProjectId}"]`
+      );
+      if(btn) btn.classList.add('active');
+    }, 0);
+  }
 
   const input = document.getElementById('chat-input');
   if (input) input.focus();
