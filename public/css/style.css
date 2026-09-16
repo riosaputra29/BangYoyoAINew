@@ -2991,4 +2991,81 @@ body.sidebar-resizing #sidebar::before {
 
 }
 
+/* =========================================================
+   PROJECT PAGE
+   ========================================================= */
+
+.project-page {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  padding: 40px 20px;
+
+  text-align: center;
+}
+
+.project-page-icon {
+  width: 64px;
+  height: 64px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin-bottom: 18px;
+
+  border-radius: 18px;
+
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.project-page-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.project-page h2 {
+  margin: 0 0 8px;
+
+  color: var(--text);
+
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.project-page p {
+  margin: 0 0 22px;
+
+  color: var(--text-muted);
+
+  font-size: 0.85rem;
+}
+
+.project-start-chat {
+  padding: 10px 18px;
+
+  border: 1px solid var(--border);
+  border-radius: 10px;
+
+  background: var(--surface-2);
+  color: var(--text);
+
+  cursor: pointer;
+
+  font-family: inherit;
+  font-size: 0.8rem;
+
+  transition: all 0.15s ease;
+}
+
+.project-start-chat:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent-light);
+}
+
 
