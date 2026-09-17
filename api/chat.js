@@ -54,7 +54,7 @@ const MAX_DOCS_KEPT_FULL = 1;
 
 const MAX_IMAGE_MSGS_KEPT_FULL = 1;
 
-const MAX_MEMORY_CHARS_IN_PROMPT = 1200;
+const MAX_MEMORY_CHARS_IN_PROMPT = 800;
 
 
 const googleClient =
@@ -1400,11 +1400,11 @@ export default async function handler(
       ? VISION_MODEL
       : MODEL;
 
-
-  const maxOutputTokens =
-    useVision
-      ? 2000
-      : 1200;
+  const maxOutputTokens = 800;
+  // const maxOutputTokens =
+  //   useVision
+  //     ? 800
+  //     : 600;
   // const maxOutputTokens =
   // useVision ? 800 : 800;
 
