@@ -1584,116 +1584,65 @@ header.is-scrolled {
    ========================================================= */
 
 .code-block {
-  background: var(--surface-2);
-
-  border: 1px solid var(--border);
-
+  margin: 14px 0;
+  border: 1px solid #30343b;
   border-radius: 10px;
-
   overflow: hidden;
-
-  margin: 10px 0;
-
-  max-width: 100%;
-}
-
-.bubble .code-block:first-child {
-  margin-top: 0;
-}
-
-.bubble .code-block:last-child {
-  margin-bottom: 0;
+  background: #1e1e1e;
 }
 
 .code-block-header {
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-
-  padding: 6px 8px 6px 12px;
-
-  background: rgba(255, 255, 255, 0.02);
-
-  border-bottom: 1px solid var(--border);
+  padding: 0 10px 0 13px;
+  background: #181a1f;
+  border-bottom: 1px solid #30343b;
 }
 
-.code-block-header .code-lang {
-  font-size: 0.7rem;
-
-  color: var(--text-muted);
-
+.code-lang {
+  font-family: "Inter", sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: #8b949e;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: .06em;
 }
 
 .code-copy-btn {
-  background: none;
-
-  border: 1px solid var(--border);
-
-  color: var(--text-muted);
-
-  padding: 4px 10px;
-
+  border: 1px solid #30343b;
+  background: transparent;
+  color: #8b949e;
   border-radius: 6px;
-
-  font-size: 0.72rem;
-
+  padding: 4px 9px;
+  font-size: 11px;
   cursor: pointer;
-
-  display: flex;
-  align-items: center;
-
-  gap: 5px;
 }
 
 .code-copy-btn:hover {
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-.code-copy-btn.copied {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.code-copy-btn svg {
-  width: 12px;
-  height: 12px;
+  color: #fff;
+  border-color: #555b66;
+  background: #25282e;
 }
 
 .code-block pre {
   margin: 0;
-
-  padding: 12px 14px;
-
+  padding: 14px;
   overflow-x: auto;
+  background: #1e1e1e;
+}
 
+.code-block pre code {
   font-family:
     "SFMono-Regular",
     Consolas,
     "Liberation Mono",
     monospace;
 
-  font-size: 0.83rem;
-  line-height: 1.6;
-
-  color: var(--text);
-
+  font-size: 12.5px;
+  line-height: 1.65;
   white-space: pre;
-}
-
-.code-block pre::-webkit-scrollbar {
-  height: 6px;
-}
-
-.code-block pre::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 6px;
-}
-
-.code-block pre::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 /* =========================================================
