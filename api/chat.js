@@ -19,32 +19,20 @@ import {
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 
 
-const GROQ_API_KEYS = [
-  process.env.GROQ_KEY_1,
-  process.env.GROQ_KEY_2,
-  process.env.GROQ_KEY_3,
-  process.env.GROQ_KEY_4
-].filter(Boolean);
+// =========================================================
+// VERCEL AI GATEWAY
+// =========================================================
 
-
-// let currentKeyIndex = 0;
-let currentKeyIndex = 2;
+const AI_GATEWAY_API_KEY =
+  process.env.AI_GATEWAY_API_KEY;
 
 const MODEL =
-  process.env.GROQ_MODEL ||
+  process.env.AI_GATEWAY_MODEL ||
   "openai/gpt-oss-120b";
 
-
-// const VISION_MODEL =
-//   process.env.GROQ_VISION_MODEL ||
-//   "qwen/qwen3.8-27b";
-const VISION_MODEL = "qwen/qwen3.8-27b";
-
-
-const MAX_IMAGES_PER_REQUEST = 5;
-
-const MAX_GROQ_RETRIES =
-  Math.max(GROQ_API_KEYS.length, 1);
+const VISION_MODEL =
+  process.env.AI_GATEWAY_VISION_MODEL ||
+  "qwen/qwen3.8-27b";
 
 
 // TOKEN SAVING
@@ -250,36 +238,35 @@ function sleep(ms) {
 /* =========================================================
    GROQ
 ========================================================= */
-function callGroq(
+// =========================================================
+// VERCEL AI GATEWAY
+// =========================================================
+
+async function callAI(
   messages,
   modelId,
-  maxTokens,
-  attempt = 0
+  maxTokens
 ) {
 
-  if (GROQ_API_KEYS.length === 0) {
-    return Promise.reject(
-      new Error("GROQ API key belum dikonfigurasi.")
+  if (!AI_GATEWAY_API_KEY) {
+    throw new Error(
+      "AI_GATEWAY_API_KEY belum dikonfigurasi."
     );
   }
 
-  const apiKey =
-    GROQ_API_KEYS[currentKeyIndex];
-
   console.log(
-    `Chat pakai Groq key ${
-      currentKeyIndex + 1
-    }/${GROQ_API_KEYS.length}`
+    `AI Gateway → model: ${modelId}`
   );
 
-  return fetch(
-    "https://api.groq.com/openai/v1/chat/completions",
+  const response = await fetch(
+    "https://ai-gateway.vercel.sh/v1/chat/completions",
     {
       method: "POST",
 
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + apiKey
+        "Authorization":
+          "Bearer " + AI_GATEWAY_API_KEY
       },
 
       body: JSON.stringify({
@@ -290,264 +277,10 @@ function callGroq(
         temperature: 0.2
       })
     }
-  ).then(async (response) => {
+  );
 
-    /*
-     * 401 = API KEY INVALID
-     * 429 = RATE LIMIT
-     *
-     * Keduanya pindah ke key berikutnya.
-     */
-
-    // if (
-    //   response.status === 401 ||
-    //   response.status === 429
-    // ) {
-
-    //   console.log(
-    //     `Groq key ${
-    //       currentKeyIndex + 1
-    //     } gagal. Status: ${response.status}`
-    //   );
-
-    //   if (
-    //     attempt + 1 >=
-    //     MAX_GROQ_RETRIES
-    //   ) {
-    //     return response;
-    //   }
-
-    //   currentKeyIndex =
-    //     (currentKeyIndex + 1) %
-    //     GROQ_API_KEYS.length;
-
-    //   console.log(
-    //     `Pindah ke Groq key ${
-    //       currentKeyIndex + 1
-    //     }/${GROQ_API_KEYS.length}`
-    //   );
-
-    //   await sleep(
-    //     300 * (attempt + 1)
-    //   );
-
-    //   return callGroq(
-    //     messages,
-    //     modelId,
-    //     maxTokens,
-    //     attempt + 1
-    //   );
-    // }
-
-    if (response.status === 401) {
-
-      console.log(
-        `Groq key ${currentKeyIndex + 1} invalid.`
-      );
-    
-      if (
-        attempt + 1 >=
-        MAX_GROQ_RETRIES
-      ) {
-        return response;
-      }
-    
-      currentKeyIndex =
-        (currentKeyIndex + 1) %
-        GROQ_API_KEYS.length;
-    
-      await sleep(
-        300 * (attempt + 1)
-      );
-    
-      return callGroq(
-        messages,
-        modelId,
-        maxTokens,
-        attempt + 1
-      );
-    }
-    
-    
-    if (response.status === 429) {
-    
-      const errorText =
-        await response.clone()
-          .text()
-          .catch(() => "");
-    
-      // Request terlalu besar:
-      // jangan pindah API key.
-      if (
-        errorText.includes(
-          "output tokens per minute"
-        ) ||
-        errorText.includes(
-          "Requested"
-        )
-      ) {
-    
-        console.log(
-          "Groq: output token terlalu besar."
-        );
-    
-        return response;
-      }
-    
-      // Rate limit biasa → coba key berikutnya
-      console.log(
-        `Groq key ${
-          currentKeyIndex + 1
-        } terkena rate limit.`
-      );
-    
-      if (
-        attempt + 1 >=
-        MAX_GROQ_RETRIES
-      ) {
-        return response;
-      }
-    
-      currentKeyIndex =
-        (currentKeyIndex + 1) %
-        GROQ_API_KEYS.length;
-    
-      await sleep(
-        300 * (attempt + 1)
-      );
-    
-      return callGroq(
-        messages,
-        modelId,
-        maxTokens,
-        attempt + 1
-      );
-    }
-    
-
-    return response;
-  });
+  return response;
 }
-
-// function callGroq(
-//   messages,
-//   modelId,
-//   maxTokens,
-//   attempt = 0
-// ) {
-
-//   if (
-//     GROQ_API_KEYS.length === 0
-//   ) {
-
-//     return Promise.reject(
-//       new Error(
-//         "GROQ API key belum dikonfigurasi."
-//       )
-//     );
-
-//   }
-
-
-//   const apiKey =
-//     GROQ_API_KEYS[
-//       currentKeyIndex
-//     ];
-
-
-//   console.log(
-//     `Chat pakai Groq key ${
-//       currentKeyIndex + 1
-//     }/${GROQ_API_KEYS.length}`
-//   );
-
-
-//   return fetch(
-//     "https://api.groq.com/openai/v1/chat/completions",
-//     {
-
-//       method: "POST",
-
-//       headers: {
-
-//         "Content-Type":
-//           "application/json",
-
-//         "Authorization":
-//           "Bearer " + apiKey
-
-//       },
-
-//       body: JSON.stringify({
-
-//         model: modelId,
-
-//         messages,
-
-//         stream: true,
-
-//         max_tokens:
-//           maxTokens,
-
-//         temperature: 0.2
-
-//       })
-
-//     }
-
-//   ).then(
-//     async (response) => {
-
-//       if (
-//         response.status === 429
-//       ) {
-
-//         console.log(
-//           `Groq key ${
-//             currentKeyIndex + 1
-//           } kena rate limit`
-//         );
-
-
-//         if (
-//           attempt + 1 >=
-//           MAX_GROQ_RETRIES
-//         ) {
-
-//           return response;
-
-//         }
-
-
-//         currentKeyIndex =
-//           (
-//             currentKeyIndex + 1
-//           ) %
-//           GROQ_API_KEYS.length;
-
-
-//         await sleep(
-//           300 *
-//           (attempt + 1)
-//         );
-
-
-//         return callGroq(
-//           messages,
-//           modelId,
-//           maxTokens,
-//           attempt + 1
-//         );
-
-//       }
-
-
-//       return response;
-
-//     }
-//   );
-
-// }
 
 
 
@@ -1403,9 +1136,9 @@ export default async function handler(
 
 
   const maxOutputTokens =
-    useVision
-      ? 2000
-      : 1200;
+  useVision
+    ? 800
+    : 800;
   // const maxOutputTokens =
   // useVision ? 800 : 800;
 
@@ -1449,11 +1182,11 @@ export default async function handler(
   try {
 
     upstream =
-      await callGroq(
-        groqMessages,
-        modelToUse,
-        maxOutputTokens
-      );
+    await callAI(
+      groqMessages,
+      modelToUse,
+      maxOutputTokens
+    );
 
   } catch (err) {
 
@@ -1478,7 +1211,7 @@ export default async function handler(
   if (!upstream.ok || !upstream.body) {
     const errorText = await upstream.text().catch(() => "");
   
-    console.error("GROQ ERROR:", {
+    console.error("AI GATEWAY ERROR:", {
       status: upstream.status,
       body: errorText
     });
@@ -1486,7 +1219,8 @@ export default async function handler(
     // Pertahankan 429 sebagai rate limit
     if (upstream.status === 429) {
       return res.status(429).json({
-        error: "Limit Groq sudah tercapai. Silakan coba lagi nanti."
+        error:
+          "Limit AI Gateway/provider sudah tercapai. Silakan coba lagi nanti."
       });
     }
   
