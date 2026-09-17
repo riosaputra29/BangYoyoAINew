@@ -2443,17 +2443,39 @@ function renderMarkdown(raw){
             block.code
           );
 
-      }else if(block){
+      
+}else if(block){
 
-        html +=
-          buildCodeBlockHtml(
-            block.lang,
-            escapeHtml(
-              block.code
-            )
-          );
-      }
+  const highlighted =
+    highlightCode(
+      block.lang,
+      block.code
+    );
 
+  html += `
+    <div class="code-block">
+
+      <div class="code-block-header">
+
+        <span class="code-lang">
+          ${block.lang || 'CODE'}
+        </span>
+
+        <button
+          type="button"
+          class="code-copy-btn"
+          onclick="copyCode(this)"
+        >
+          ⧉ Copy
+        </button>
+
+      </div>
+
+      <pre><code class="hljs">${highlighted}</code></pre>
+
+    </div>
+  `;
+}
       continue;
     }
 
