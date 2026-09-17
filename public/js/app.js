@@ -102,8 +102,15 @@ function startAIThinking (aiBubble){
     }, 1200);
 }
 
-function highlightCode(lang, code) {
-  const map = {
+
+// =========================================================
+// CODE HIGHLIGHTING
+// =========================================================
+
+function highlightCode(lang, code){
+
+  const languageMap = {
+
     js: 'javascript',
     jsx: 'javascript',
     javascript: 'javascript',
@@ -130,8 +137,10 @@ function highlightCode(lang, code) {
     shell: 'bash',
 
     java: 'java',
+
     c: 'c',
     cpp: 'cpp',
+
     csharp: 'csharp',
 
     yaml: 'yaml',
@@ -141,23 +150,102 @@ function highlightCode(lang, code) {
     md: 'markdown'
   };
 
-  const language = map[String(lang || '').toLowerCase()];
+  const normalized =
+    String(lang || '')
+      .trim()
+      .toLowerCase();
 
-  if (
-    window.hljs &&
-    language &&
-    hljs.getLanguage(language)
-  ) {
-    try {
-      return hljs.highlight(code, {
-        language
-      }).value;
-    } catch (err) {
-      console.warn('Highlight error:', err);
-    }
+  const language =
+    languageMap[normalized];
+
+  // Highlight.js belum termuat
+  if(!window.hljs){
+
+    console.warn(
+      'Highlight.js belum termuat.'
+    );
+
+    return escapeHtml(code);
   }
 
-  return escapeHtml(code);
+  // Bahasa tidak dikenal
+  if(
+    !language ||
+    !hljs.getLanguage(language)
+  ){
+    return escapeHtml(code);
+  }
+
+  try{
+
+    return hljs.highlight(
+      code,
+      {
+        language: language
+      }
+    ).value;
+
+  }catch(error){
+
+    console.warn(
+      'Highlight error:',
+      error
+    );
+
+    return escapeHtml(code);
+  }
+}
+
+
+// =========================================================
+// CODE BLOCK
+// =========================================================
+
+function buildCodeBlockHtml(
+  lang,
+  code
+){
+
+  const label =
+    lang
+      ? lang.toUpperCase()
+      : 'CODE';
+
+  const highlighted =
+    highlightCode(
+      lang,
+      code
+    );
+
+  return (
+
+    '<div class="code-block">' +
+
+      '<div class="code-block-header">' +
+
+        '<span class="code-lang">' +
+          escapeHtml(label) +
+        '</span>' +
+
+        '<button ' +
+          'class="code-copy-btn" ' +
+          'type="button">' +
+
+          COPY_ICON_SVG +
+
+          '<span>Salin</span>' +
+
+        '</button>' +
+
+      '</div>' +
+
+      '<pre><code class="hljs">' +
+        highlighted +
+      '</code></pre>' +
+
+    '</div>'
+
+  );
 }
 
 
