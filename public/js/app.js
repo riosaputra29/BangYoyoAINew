@@ -4145,6 +4145,36 @@ if (startVoiceBtn) {
 }
 
 
+function showChatSuggestions(aiBubble) {
+  const suggestions = [
+    'Analisis lebih detail',
+    'Apa dampaknya?',
+    'Berikan rekomendasi teknis'
+  ];
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'chat-suggestions';
+
+  suggestions.forEach(text => {
+    const button = document.createElement('button');
+
+    button.type = 'button';
+    button.className = 'suggestion-btn';
+    button.textContent = text;
+
+    button.addEventListener('click', () => {
+      input.value = text;
+      updateSendButton();
+      input.focus();
+      sendMessage();
+    });
+
+    wrapper.appendChild(button);
+  });
+
+  aiBubble.appendChild(wrapper);
+}
+
 // =========================================================
 // SEND MESSAGE
 // =========================================================
