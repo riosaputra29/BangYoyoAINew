@@ -1039,20 +1039,11 @@ function buildGroqMessages(
     ACTIONABLE INSIGHT:
     Untuk analisis data, bisnis, GIS, LiDAR, peta, atau laporan, jika data cukup:
     - TEMUAN
+    - DAMPAK BISNIS : JELASKAN DALAM RUPIAH/WAKTU
     - TINDAKAN
     - REKOMENDASI TEKNIS
     - PRIORITAS
     - AREA
-    - DAMPAK FINANSIAL
-      Asumsi:
-      - Area terdampak: 120 ha
-      - Nilai produksi: Rp35 juta/ha/tahun
-      - Potensi kehilangan: 20%
-    
-      Estimasi
-      Rumus Umum:
-      Kerugian = Area × Nilai/ha × % kehilangan
-    
     - VALIDASI
     
     ATURAN MEMORY YANG WAJIB:
