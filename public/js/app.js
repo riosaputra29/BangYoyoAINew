@@ -1970,8 +1970,20 @@ function renderMarkdown(raw){
 
   let source =
     String(raw)
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n');
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+    
+    // =======================================================
+    // NORMALIZE HTML LINE BREAK DARI AI
+    // =======================================================
+    
+    // AI kadang mengirim <br>, <br/>, atau <br />
+    // Ubah menjadi newline agar tidak tampil sebagai teks.
+    source =
+    source.replace(
+      /<br\s*\/?>/gi,
+      '\n'
+    );
 
   // =======================================================
   // NORMALIZE AI MARKDOWN
@@ -4145,17 +4157,126 @@ if (startVoiceBtn) {
 }
 
 
-function showChatSuggestions(aiBubble) {
-  const suggestions = [
-    'Analisis lebih detail',
-    'Apa dampaknya?',
-    'Berikan rekomendasi teknis'
-  ];
+// function showChatSuggestions(aiBubble) {
+//   const suggestions = [
+//     'Analisis lebih detail',
+//     'Apa dampaknya?',
+//     'Berikan rekomendasi teknis'
+//   ];
+
+//   const wrapper = document.createElement('div');
+//   wrapper.className = 'chat-suggestions';
+
+//   suggestions.forEach(text => {
+//     const button = document.createElement('button');
+
+//     button.type = 'button';
+//     button.className = 'suggestion-btn';
+//     button.textContent = text;
+
+//     button.addEventListener('click', () => {
+//       input.value = text;
+//       updateSendButton();
+//       input.focus();
+//       sendMessage();
+//     });
+
+//     wrapper.appendChild(button);
+//   });
+
+//   aiBubble.appendChild(wrapper);
+// }
+
+function showChatSuggestions(aiBubble, fullText = '') {
+
+  const text = String(fullText || '').toLowerCase();
+
+  let suggestions = [];
+
+  // LiDAR / GIS
+  if (
+    text.includes('lidar') ||
+    text.includes('dtm') ||
+    text.includes('dem') ||
+    text.includes('dsm') ||
+    text.includes('elevasi') ||
+    text.includes('slope') ||
+    text.includes('kontur')
+  ) {
+    suggestions = [
+      'Analisis area yang perlu divalidasi',
+      'Apa dampaknya terhadap kondisi terrain?',
+      'Berikan rekomendasi teknis',
+      'Data LiDAR apa yang diperlukan?'
+    ];
+  }
+
+  // Hidrologi / banjir
+  else if (
+    text.includes('banjir') ||
+    text.includes('drainage') ||
+    text.includes('hidrolog') ||
+    text.includes('genangan') ||
+    text.includes('drainase')
+  ) {
+    suggestions = [
+      'Analisis potensi genangan',
+      'Apa dampaknya?',
+      'Berikan rekomendasi mitigasi',
+      'Data apa yang perlu ditambahkan?'
+    ];
+  }
+
+  // SQL / programming
+  else if (
+    text.includes('sql') ||
+    text.includes('query') ||
+    text.includes('javascript') ||
+    text.includes('php') ||
+    text.includes('python') ||
+    text.includes('code')
+  ) {
+    suggestions = [
+      'Optimalkan kode ini',
+      'Jelaskan bagian yang bermasalah',
+      'Buat versi yang lebih sederhana',
+      'Cari potensi error'
+    ];
+  }
+
+  // Excel / data
+  else if (
+    text.includes('excel') ||
+    text.includes('csv') ||
+    text.includes('data') ||
+    text.includes('tabel')
+  ) {
+    suggestions = [
+      'Analisis data ini',
+      'Buatkan ringkasannya',
+      'Cari pola atau anomali',
+      'Buatkan tabel yang lebih rapi'
+    ];
+  }
+
+  // Default
+  else {
+    suggestions = [
+      'Jelaskan lebih detail',
+      'Apa dampaknya?',
+      'Berikan contoh',
+      'Apa langkah selanjutnya?'
+    ];
+  }
+
+  // Ambil maksimal 3 agar UI tetap ringkas
+  suggestions = suggestions.slice(0, 3);
 
   const wrapper = document.createElement('div');
   wrapper.className = 'chat-suggestions';
 
   suggestions.forEach(text => {
+
     const button = document.createElement('button');
 
     button.type = 'button';
@@ -4163,11 +4284,82 @@ function showChatSuggestions(aiBubble) {
     button.textContent = text;
 
     button.addEventListener('click', () => {
+
       input.value = text;
+
       updateSendButton();
+
       input.focus();
+
       sendMessage();
     });
+
+    wrapper.appendChild(button);
+  });
+
+  aiBubble.appendChild(wrapper);
+}
+
+function addQuickActions(aiBubble, fullText) {
+
+  const wrapper = document.createElement('div');
+
+  wrapper.className = 'chat-quick-actions';
+
+  const actions = [
+    {
+      icon: '↻',
+      label: 'Regenerate',
+      action: () => {
+        input.value = history.length >= 2
+          ? history[history.length - 2].content
+          : '';
+
+        updateSendButton();
+        sendMessage();
+      }
+    },
+    {
+      icon: '⧉',
+      label: 'Salin',
+      action: () => {
+        navigator.clipboard.writeText(fullText);
+      }
+    },
+    {
+      icon: '✦',
+      label: 'Ringkas',
+      action: () => {
+        input.value = 'Ringkas jawaban sebelumnya menjadi poin-poin singkat.';
+        updateSendButton();
+        sendMessage();
+      }
+    },
+    {
+      icon: '▤',
+      label: 'Jadikan tabel',
+      action: () => {
+        input.value = 'Ubah informasi sebelumnya menjadi tabel yang rapi.';
+        updateSendButton();
+        sendMessage();
+      }
+    }
+  ];
+
+  actions.forEach(item => {
+
+    const button = document.createElement('button');
+
+    button.type = 'button';
+    button.className = 'quick-action-btn';
+
+    button.innerHTML =
+      `<span>${item.icon}</span>${item.label}`;
+
+    button.addEventListener(
+      'click',
+      item.action
+    );
 
     wrapper.appendChild(button);
   });
@@ -4821,7 +5013,9 @@ async function sendMessage(){
     
       });
     
-      showChatSuggestions(aiBubble);
+      // showChatSuggestions(aiBubble);
+      showChatSuggestions(aiBubble, fullText);
+      addQuickActions(aiBubble, fullText);
     }
 
     else if(!started){
