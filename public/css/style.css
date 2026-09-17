@@ -3272,19 +3272,34 @@ body.sidebar-resizing #sidebar::before {
 }
 
 .suggestion-btn {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  padding: 7px 11px;
-  border-radius: 10px;
+  border: 1px solid rgba(94, 234, 212, 0.25);
+  background: linear-gradient(
+    135deg,
+    rgba(14, 116, 144, 0.18),
+    rgba(201, 155, 74, 0.12)
+  );
+  color: #d9fdf8;
+  padding: 8px 13px;
+  border-radius: 12px;
   font-size: 0.8rem;
   cursor: pointer;
-  transition: 0.2s ease;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
 }
 
 .suggestion-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  transform: translateY(-1px);
+  background: linear-gradient(
+    135deg,
+    rgba(94, 234, 212, 0.28),
+    rgba(232, 199, 122, 0.22)
+  );
+  border-color: #5eead4;
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 18px rgba(94, 234, 212, 0.15);
+}
+
+.suggestion-btn:active {
+  transform: translateY(0);
 }
 
