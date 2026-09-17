@@ -308,7 +308,7 @@ button:focus-visible,
   justify-content: center;
 }
 
-/* .tanya-logo svg {
+.tanya-logo svg {
   width: 100%;
   height: 100%;
   display: block;
@@ -318,7 +318,7 @@ button:focus-visible,
   filter: drop-shadow(
     0 5px 10px rgba(201, 155, 74, 0.12)
   );
-} */
+}
 
 .tanya-logo .logo-glow {
   position: absolute;
@@ -329,27 +329,9 @@ button:focus-visible,
   z-index: 0;
 }
 
-/* .tanya-logo.small {
+.tanya-logo.small {
   width: 30px;
   height: 30px;
-} */
-
-.tanya-logo.small {
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  border-radius: 10px;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.tanya-logo.small img {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
 }
 
 .tanya-logo.large {
