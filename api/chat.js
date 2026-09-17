@@ -298,38 +298,67 @@ function callGroq(
      * Keduanya pindah ke key berikutnya.
      */
 
-    if (
-      response.status === 401 ||
-      response.status === 429
-    ) {
+    // if (
+    //   response.status === 401 ||
+    //   response.status === 429
+    // ) {
+
+    //   console.log(
+    //     `Groq key ${
+    //       currentKeyIndex + 1
+    //     } gagal. Status: ${response.status}`
+    //   );
+
+    //   if (
+    //     attempt + 1 >=
+    //     MAX_GROQ_RETRIES
+    //   ) {
+    //     return response;
+    //   }
+
+    //   currentKeyIndex =
+    //     (currentKeyIndex + 1) %
+    //     GROQ_API_KEYS.length;
+
+    //   console.log(
+    //     `Pindah ke Groq key ${
+    //       currentKeyIndex + 1
+    //     }/${GROQ_API_KEYS.length}`
+    //   );
+
+    //   await sleep(
+    //     300 * (attempt + 1)
+    //   );
+
+    //   return callGroq(
+    //     messages,
+    //     modelId,
+    //     maxTokens,
+    //     attempt + 1
+    //   );
+    // }
+
+    if (response.status === 401) {
 
       console.log(
-        `Groq key ${
-          currentKeyIndex + 1
-        } gagal. Status: ${response.status}`
+        `Groq key ${currentKeyIndex + 1} invalid.`
       );
-
+    
       if (
         attempt + 1 >=
         MAX_GROQ_RETRIES
       ) {
         return response;
       }
-
+    
       currentKeyIndex =
         (currentKeyIndex + 1) %
         GROQ_API_KEYS.length;
-
-      console.log(
-        `Pindah ke Groq key ${
-          currentKeyIndex + 1
-        }/${GROQ_API_KEYS.length}`
-      );
-
+    
       await sleep(
         300 * (attempt + 1)
       );
-
+    
       return callGroq(
         messages,
         modelId,
@@ -337,6 +366,63 @@ function callGroq(
         attempt + 1
       );
     }
+    
+    
+    if (response.status === 429) {
+    
+      const errorText =
+        await response.clone()
+          .text()
+          .catch(() => "");
+    
+      // Request terlalu besar:
+      // jangan pindah API key.
+      if (
+        errorText.includes(
+          "output tokens per minute"
+        ) ||
+        errorText.includes(
+          "Requested"
+        )
+      ) {
+    
+        console.log(
+          "Groq: output token terlalu besar."
+        );
+    
+        return response;
+      }
+    
+      // Rate limit biasa → coba key berikutnya
+      console.log(
+        `Groq key ${
+          currentKeyIndex + 1
+        } terkena rate limit.`
+      );
+    
+      if (
+        attempt + 1 >=
+        MAX_GROQ_RETRIES
+      ) {
+        return response;
+      }
+    
+      currentKeyIndex =
+        (currentKeyIndex + 1) %
+        GROQ_API_KEYS.length;
+    
+      await sleep(
+        300 * (attempt + 1)
+      );
+    
+      return callGroq(
+        messages,
+        modelId,
+        maxTokens,
+        attempt + 1
+      );
+    }
+    
 
     return response;
   });
@@ -1443,10 +1529,12 @@ export default async function handler(
       : MODEL;
 
 
+  // const maxOutputTokens =
+  //   useVision
+  //     ? 2000
+  //     : 1200;
   const maxOutputTokens =
-    useVision
-      ? 2000
-      : 1200;
+  useVision ? 800 : 800;
 
 
 
