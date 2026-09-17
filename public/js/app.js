@@ -57,70 +57,70 @@ let currentProjectId = null;   // tambahkan ini
 // AI PROCESSING STATUS
 // =========================================================
 
+
 let aiThinkingTimer = null;
 
-function startAIThinking() {
-  const messages = document.getElementById("messages");
+function startBubbleThinking(aiBubble){
 
-  if (!messages) return;
+  const text =
+    aiBubble.querySelector(
+      '.ai-thinking-text'
+    );
 
-  stopAIThinking();
-
-  const el = document.createElement("div");
-  el.className = "ai-thinking";
-  el.id = "ai-thinking";
-
-  el.innerHTML = `
-    <div class="ai-thinking-icon">
-      <span></span>
-      <span></span>
-      <span></span>
-    </div>
-
-    <div class="ai-thinking-text">
-      Menganalisis pertanyaan...
-    </div>
-  `;
-
-  messages.appendChild(el);
+  if(!text) return;
 
   const status = [
-    "Menganalisis pertanyaan...",
-    "Memeriksa konteks...",
-    "Menyusun informasi...",
-    "Menganalisis data...",
-    "Menyiapkan jawaban..."
+    'Menganalisis pertanyaan...',
+    'Memeriksa konteks...',
+    'Menyusun informasi...',
+    'Menganalisis data...',
+    'Menyiapkan jawaban...'
   ];
 
   let index = 0;
 
-  aiThinkingTimer = setInterval(() => {
-    index = (index + 1) % status.length;
+  if(aiThinkingTimer){
+    clearInterval(aiThinkingTimer);
+  }
 
-    const text =
-      document.querySelector(
-        "#ai-thinking .ai-thinking-text"
-      );
+  aiThinkingTimer =
+    setInterval(() => {
 
-    if (text) {
-      text.textContent = status[index];
-    }
-  }, 1200);
+      index =
+        (index + 1) % status.length;
 
-  messages.scrollTop = messages.scrollHeight;
+      if(
+        document.body.contains(aiBubble) &&
+        text
+      ){
+
+        text.textContent =
+          status[index];
+
+      }
+
+    }, 1200);
 }
 
-function stopAIThinking() {
-  if (aiThinkingTimer) {
-    clearInterval(aiThinkingTimer);
+
+function stopBubbleThinking(aiBubble){
+
+  if(aiThinkingTimer){
+
+    clearInterval(
+      aiThinkingTimer
+    );
+
     aiThinkingTimer = null;
   }
 
-  const el =
-    document.getElementById("ai-thinking");
+  const thinking =
+    aiBubble.querySelector(
+      '.ai-thinking'
+    );
 
-  if (el) {
-    el.remove();
+  if(thinking){
+    thinking.remove();
   }
 }
 
@@ -4333,23 +4333,26 @@ async function sendMessage(){
   // AI BUBBLE
 
   const aiBubble =
-    addRow('ai');
+  addRow('ai');
 
-
-  aiBubble.innerHTML =
-
-    '<span class="typing-dots">' +
-
-      '<span></span>' +
-      '<span></span>' +
-      '<span></span>' +
-
-    '</span>';
-
-
+  aiBubble.innerHTML = `
+    <div class="ai-thinking">
+      <div class="ai-thinking-icon">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+  
+      <div class="ai-thinking-text">
+        Menganalisis pertanyaan...
+      </div>
+    </div>
+  `;
+  
+  startBubbleThinking(aiBubble);
+  
   let fullText = '';
-
-
+  
   const isNewConversation =
     currentConversationId === null;
 
@@ -4413,7 +4416,11 @@ async function sendMessage(){
     // CHAT LIMIT / RATE LIMIT
     // ============================================================
     if(response.status === 429){
-      stopAIThinking();
+
+      stopBubbleThinking(
+        aiBubble
+      );
+    
       aiBubble.textContent =
         'Limit Chat sudah habis. Silakan coba lagi beberapa saat lagi.';
     
@@ -4680,25 +4687,27 @@ async function sendMessage(){
 
           if(chunkText){
 
-            // AI mulai mengirim jawaban
-            if(!started){
-              stopAIThinking();
-            }
-          
-            started = true;
-          
-            const stayPinned =
-              isNearBottom();
-
-
-            fullText +=
-              chunkText;
-
-
-            aiBubble.innerHTML =
-              renderMarkdown(
-                fullText
-              );
+          // Token pertama dari AI sudah diterima
+          if(!started){
+        
+            stopBubbleThinking(
+              aiBubble
+            );
+        
+          }
+        
+          started = true;
+        
+          const stayPinned =
+            isNearBottom();
+        
+          fullText +=
+            chunkText;
+        
+          aiBubble.innerHTML =
+            renderMarkdown(
+              fullText
+            );
 
             if(
               window.MathJax &&
