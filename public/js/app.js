@@ -204,7 +204,7 @@ function highlightCode(lang, code){
 function buildCodeBlockHtml(
   block.lang,
   block.code
-);
+
 ){
 
   const label =
