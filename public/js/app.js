@@ -4413,7 +4413,7 @@ async function sendMessage(){
     // CHAT LIMIT / RATE LIMIT
     // ============================================================
     if(response.status === 429){
-    
+      stopAIThinking();
       aiBubble.textContent =
         'Limit Chat sudah habis. Silakan coba lagi beberapa saat lagi.';
     
@@ -4427,11 +4427,11 @@ async function sendMessage(){
     // 401 = SESSION BENAR-BENAR TIDAK VALID
     // ============================================================
     if(response.status === 401){
-    
+      stopAIThinking();
       let errorMessage = '';
     
       try{
-        const data = await response.json();
+        const data = await response.json(); 
     
         errorMessage =
           data?.error ||
@@ -4555,7 +4555,7 @@ async function sendMessage(){
       !response.ok ||
       !response.body
     ){
-    
+      stopAIThinking();
       let errorMessage =
         'Maaf, AI sedang tidak bisa dihubungi. Silakan coba lagi beberapa saat lagi.';
     
@@ -4681,7 +4681,9 @@ async function sendMessage(){
           if(chunkText){
 
             // AI mulai mengirim jawaban
-            stopAIThinking();
+            if(!started){
+              stopAIThinking();
+            }
           
             started = true;
           
