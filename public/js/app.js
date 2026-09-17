@@ -6366,14 +6366,19 @@ async function exportInsightPDF() {
   }
 
   if (
-    !window.html2canvas ||
-    !window.jspdf
+    typeof window.html2canvas !== 'function' ||
+    !window.jspdf ||
+    typeof window.jspdf.jsPDF !== 'function'
   ) {
-
+    console.error('PDF Library:', {
+      html2canvas: typeof window.html2canvas,
+      jspdf: window.jspdf
+    });
+  
     alert(
-      'Library PDF belum siap. Silakan refresh halaman.'
+      'Library PDF gagal dimuat. Buka F12 → Console untuk melihat detail error.'
     );
-
+  
     return;
   }
 
