@@ -1400,11 +1400,11 @@ export default async function handler(
       ? VISION_MODEL
       : MODEL;
 
-  const maxOutputTokens = 800;
-  // const maxOutputTokens =
-  //   useVision
-  //     ? 800
-  //     : 600;
+  // const maxOutputTokens = 800;
+  const maxOutputTokens =
+    useVision
+      ? 800
+      : 600;
   // const maxOutputTokens =
   // useVision ? 800 : 800;
 
