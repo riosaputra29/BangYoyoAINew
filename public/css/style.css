@@ -3200,3 +3200,67 @@ body.sidebar-resizing #sidebar::before {
   animation: softFadeIn 0.4s ease-out forwards;
 }
 
+/* =========================================================
+   AI THINKING
+========================================================= */
+
+.ai-thinking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  animation: aiThinkingFade 0.25s ease;
+}
+
+.ai-thinking-icon {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.ai-thinking-icon span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: aiThinkingDot 1.2s infinite ease-in-out;
+}
+
+.ai-thinking-icon span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.ai-thinking-icon span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.ai-thinking-text {
+  transition: opacity 0.2s ease;
+}
+
+@keyframes aiThinkingDot {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@keyframes aiThinkingFade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
