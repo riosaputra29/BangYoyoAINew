@@ -201,54 +201,6 @@ function highlightCode(lang, code){
 // CODE BLOCK
 // =========================================================
 
-function buildCodeBlockHtml(
-  block.lang,
-  block.code
-
-){
-
-  const label =
-    lang
-      ? lang.toUpperCase()
-      : 'CODE';
-
-  const highlighted =
-    highlightCode(
-      lang,
-      code
-    );
-
-  return (
-
-    '<div class="code-block">' +
-
-      '<div class="code-block-header">' +
-
-        '<span class="code-lang">' +
-          escapeHtml(label) +
-        '</span>' +
-
-        '<button ' +
-          'class="code-copy-btn" ' +
-          'type="button">' +
-
-          COPY_ICON_SVG +
-
-          '<span>Salin</span>' +
-
-        '</button>' +
-
-      '</div>' +
-
-      '<pre><code class="hljs">' +
-        highlighted +
-      '</code></pre>' +
-
-    '</div>'
-
-  );
-}
-
 
 function stopAIThinking(aiBubble){
 
