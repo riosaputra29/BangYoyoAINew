@@ -3505,3 +3505,70 @@ body.sidebar-resizing #sidebar::before {
 .bubble img {
   cursor: zoom-in;
 }
+
+/* =========================================================
+   EXPORT PDF BUTTON
+   ========================================================= */
+
+#export-pdf-btn {
+  height: 32px;
+  min-width: 58px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+
+  padding: 0 10px;
+
+  border: 1px solid var(--border);
+  border-radius: 8px;
+
+  background: transparent;
+  color: var(--text-muted);
+
+  font-family: "Inter", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition:
+    background .18s ease,
+    border-color .18s ease,
+    color .18s ease,
+    transform .15s ease;
+}
+
+#export-pdf-btn:hover {
+  background: rgba(201,155,74,.10);
+  border-color: var(--accent);
+  color: var(--accent-light);
+}
+
+#export-pdf-btn:active {
+  transform: scale(.94);
+}
+
+#export-pdf-btn:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+#export-pdf-btn span:first-child {
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+
+  #export-pdf-btn {
+    min-width: 34px;
+    width: 34px;
+    padding: 0;
+  }
+
+  #export-pdf-btn .export-pdf-label {
+    display: none;
+  }
+
+}
