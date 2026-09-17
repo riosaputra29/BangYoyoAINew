@@ -53,7 +53,76 @@ let currentConversationId = null;
 
 let currentProjectId = null;   // tambahkan ini
 
+// =========================================================
+// AI PROCESSING STATUS
+// =========================================================
 
+let aiThinkingTimer = null;
+
+function startAIThinking() {
+  const messages = document.getElementById("messages");
+
+  if (!messages) return;
+
+  stopAIThinking();
+
+  const el = document.createElement("div");
+  el.className = "ai-thinking";
+  el.id = "ai-thinking";
+
+  el.innerHTML = `
+    <div class="ai-thinking-icon">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+
+    <div class="ai-thinking-text">
+      Menganalisis pertanyaan...
+    </div>
+  `;
+
+  messages.appendChild(el);
+
+  const status = [
+    "Menganalisis pertanyaan...",
+    "Memeriksa konteks...",
+    "Menyusun informasi...",
+    "Menganalisis data...",
+    "Menyiapkan jawaban..."
+  ];
+
+  let index = 0;
+
+  aiThinkingTimer = setInterval(() => {
+    index = (index + 1) % status.length;
+
+    const text =
+      document.querySelector(
+        "#ai-thinking .ai-thinking-text"
+      );
+
+    if (text) {
+      text.textContent = status[index];
+    }
+  }, 1200);
+
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function stopAIThinking() {
+  if (aiThinkingTimer) {
+    clearInterval(aiThinkingTimer);
+    aiThinkingTimer = null;
+  }
+
+  const el =
+    document.getElementById("ai-thinking");
+
+  if (el) {
+    el.remove();
+  }
+}
 
 
 // =========================================================
