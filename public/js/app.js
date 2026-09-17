@@ -2528,7 +2528,6 @@ function renderMarkdown(raw){
         <button
           type="button"
           class="code-copy-btn"
-          onclick="copyCode(this)"
         >
           ⧉ Copy
         </button>
