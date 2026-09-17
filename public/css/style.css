@@ -3374,3 +3374,43 @@ body.sidebar-resizing #sidebar::before {
 .suggestion-btn {
   font-size: 12px;
 }
+
+.chat-suggestions,
+.chat-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.suggestion-btn,
+.quick-action-btn {
+  border: 1px solid rgba(94, 234, 212, .18);
+  background: rgba(255,255,255,.035);
+  color: #b9c2cc;
+  padding: 7px 11px;
+  border-radius: 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: .2s ease;
+}
+
+.suggestion-btn:hover,
+.quick-action-btn:hover {
+  color: #fff;
+  border-color: rgba(94,234,212,.45);
+  background: rgba(94,234,212,.09);
+  transform: translateY(-1px);
+}
+
+.quick-action-btn {
+  opacity: .78;
+}
+
+.quick-action-btn:hover {
+  opacity: 1;
+}
+
+.quick-action-btn span {
+  margin-right: 5px;
+}
