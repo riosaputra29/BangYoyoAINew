@@ -3303,3 +3303,74 @@ body.sidebar-resizing #sidebar::before {
   transform: translateY(0);
 }
 
+/* =========================
+   FONT CHAT — LEBIH ELEGAN
+========================= */
+
+.message,
+.ai-message,
+.user-message {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.ai-message {
+  font-size: 14px;
+  line-height: 1.7;
+  letter-spacing: 0.05px;
+}
+
+.user-message {
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+/* Paragraf AI */
+.ai-message p {
+  margin: 0 0 10px;
+}
+
+.ai-message p:last-child {
+  margin-bottom: 0;
+}
+
+/* Heading */
+.ai-message h1 {
+  font-size: 19px;
+}
+
+.ai-message h2 {
+  font-size: 17px;
+}
+
+.ai-message h3 {
+  font-size: 15px;
+}
+
+/* List */
+.ai-message ul,
+.ai-message ol {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+/* Quote */
+.ai-message blockquote {
+  font-size: 13.5px;
+}
+
+/* Code */
+.code-content pre {
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* Thinking */
+.ai-thinking {
+  font-size: 12px;
+}
+
+/* Suggestion */
+.suggestion-btn {
+  font-size: 12px;
+}
