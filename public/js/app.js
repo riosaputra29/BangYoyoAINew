@@ -5667,3 +5667,921 @@ document.addEventListener('click', function (e) {
     }, 200);
   });
 });
+
+// =========================================================
+// EXPORT INSIGHT PDF
+// =========================================================
+
+function initPdfExport() {
+
+  const header = document.querySelector(
+    '#chat-screen header'
+  );
+
+  if (!header) return;
+
+  if (document.getElementById('export-pdf-btn')) {
+    return;
+  }
+
+  const userMenu =
+    document.getElementById('user-menu');
+
+  const button =
+    document.createElement('button');
+
+  button.id = 'export-pdf-btn';
+  button.type = 'button';
+  button.title = 'Export Insight PDF';
+
+  button.innerHTML = `
+    <span>▣</span>
+    <span class="export-pdf-label">PDF</span>
+  `;
+
+  button.addEventListener(
+    'click',
+    exportInsightPDF
+  );
+
+  if (userMenu) {
+    userMenu.insertBefore(
+      button,
+      userMenu.firstChild
+    );
+  } else {
+    header.appendChild(button);
+  }
+}
+
+
+// =========================================================
+// AMBIL TEKS TERAKHIR DARI AI
+// =========================================================
+
+function getLatestAIInsight() {
+
+  const bubbles =
+    document.querySelectorAll(
+      '#messages .row.ai .bubble'
+    );
+
+  if (!bubbles.length) {
+    return '';
+  }
+
+  const last =
+    bubbles[bubbles.length - 1];
+
+  return last.innerText.trim();
+}
+
+
+// =========================================================
+// AMBIL FOTO DARI CHAT
+// =========================================================
+
+function getChatImages() {
+
+  const images =
+    document.querySelectorAll(
+      '#messages .msg-image'
+    );
+
+  return Array.from(images)
+    .map(img => ({
+      src: img.src,
+      alt: img.alt || 'Foto analisis'
+    }))
+    .filter(item => item.src);
+}
+
+
+// =========================================================
+// BERSIHKAN TEKS UNTUK PDF
+// =========================================================
+
+function cleanInsightText(text) {
+
+  return String(text || '')
+    .replace(/\r/g, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+
+// =========================================================
+// PARSE INSIGHT MENJADI BAGIAN
+// =========================================================
+
+function parseInsightSections(text) {
+
+  const sections = [];
+
+  const normalized =
+    cleanInsightText(text);
+
+  const lines =
+    normalized.split('\n');
+
+  let current = null;
+
+  const sectionNames = [
+    'TEMUAN',
+    'DAMPAK',
+    'TINDAKAN',
+    'REKOMENDASI TEKNIS',
+    'REKOMENDASI',
+    'PRIORITAS',
+    'AREA',
+    'VALIDASI',
+    'KESIMPULAN',
+    'ANALISIS',
+    'EXECUTIVE SUMMARY',
+    'RINGKASAN'
+  ];
+
+  function startSection(title) {
+
+    current = {
+      title,
+      content: []
+    };
+
+    sections.push(current);
+  }
+
+  for (const rawLine of lines) {
+
+    const line =
+      rawLine.trim();
+
+    if (!line) {
+
+      if (current) {
+        current.content.push('');
+      }
+
+      continue;
+    }
+
+    const cleanTitle =
+      line
+        .replace(/^#+\s*/, '')
+        .replace(/^\*\*/, '')
+        .replace(/\*\*$/, '')
+        .replace(/:$/, '')
+        .trim()
+        .toUpperCase();
+
+    const matched =
+      sectionNames.find(
+        name =>
+          cleanTitle === name ||
+          cleanTitle.startsWith(name + ' ')
+      );
+
+    if (matched) {
+
+      startSection(
+        matched
+      );
+
+      continue;
+    }
+
+    if (!current) {
+
+      startSection(
+        'INSIGHT ANALISIS'
+      );
+
+    }
+
+    current.content.push(
+      line
+    );
+  }
+
+  return sections;
+}
+
+
+// =========================================================
+// ESCAPE HTML
+// =========================================================
+
+function escapePdfHTML(value) {
+
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+
+// =========================================================
+// FORMAT PARAGRAF
+// =========================================================
+
+function formatPdfContent(content) {
+
+  return content
+    .map(line => {
+
+      const text =
+        line.trim();
+
+      if (!text) {
+        return '<div class="pdf-space"></div>';
+      }
+
+      if (
+        /^[-•*]\s+/.test(text)
+      ) {
+
+        return `
+          <div class="pdf-bullet">
+            <span>•</span>
+            <div>
+              ${escapePdfHTML(
+                text.replace(
+                  /^[-•*]\s+/,
+                  ''
+                )
+              )}
+            </div>
+          </div>
+        `;
+      }
+
+      if (
+        /^\d+[.)]\s+/.test(text)
+      ) {
+
+        const match =
+          text.match(
+            /^(\d+)[.)]\s+(.+)$/
+          );
+
+        return `
+          <div class="pdf-number">
+            <span>${match[1]}.</span>
+            <div>${escapePdfHTML(match[2])}</div>
+          </div>
+        `;
+      }
+
+      return `
+        <p class="pdf-paragraph">
+          ${escapePdfHTML(text)}
+        </p>
+      `;
+
+    })
+    .join('');
+}
+
+
+// =========================================================
+// GENERATE REPORT HTML
+// =========================================================
+
+function buildInsightReportHTML() {
+
+  const insight =
+    getLatestAIInsight();
+
+  if (!insight) {
+    throw new Error(
+      'Belum ada hasil analisis AI yang bisa diexport.'
+    );
+  }
+
+  const images =
+    getChatImages();
+
+  const sections =
+    parseInsightSections(
+      insight
+    );
+
+  const now =
+    new Date();
+
+  const dateText =
+    now.toLocaleDateString(
+      'id-ID',
+      {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      }
+    );
+
+  const timeText =
+    now.toLocaleTimeString(
+      'id-ID',
+      {
+        hour: '2-digit',
+        minute: '2-digit'
+      }
+    );
+
+  const imageHTML =
+    images.length
+      ? `
+        <section class="pdf-section">
+          <div class="pdf-section-title">
+            <span class="pdf-section-number">01</span>
+            <span>Foto Analisis</span>
+          </div>
+
+          <div class="pdf-images">
+            ${images.map((image, index) => `
+              <figure class="pdf-image-card">
+                <img
+                  src="${image.src}"
+                  alt="${escapePdfHTML(image.alt)}"
+                >
+                <figcaption>
+                  Foto ${index + 1}
+                </figcaption>
+              </figure>
+            `).join('')}
+          </div>
+        </section>
+      `
+      : '';
+
+  const sectionStart =
+    images.length
+      ? 2
+      : 1;
+
+  const sectionsHTML =
+    sections
+      .map((section, index) => {
+
+        const number =
+          String(
+            sectionStart + index
+          ).padStart(2, '0');
+
+        return `
+          <section class="pdf-section">
+            <div class="pdf-section-title">
+              <span class="pdf-section-number">
+                ${number}
+              </span>
+
+              <span>
+                ${escapePdfHTML(
+                  section.title
+                )}
+              </span>
+            </div>
+
+            <div class="pdf-section-content">
+              ${formatPdfContent(
+                section.content
+              )}
+            </div>
+          </section>
+        `;
+
+      })
+      .join('');
+
+  return `
+<!DOCTYPE html>
+<html lang="id">
+<head>
+
+<meta charset="UTF-8">
+
+<style>
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+
+  background: #ffffff;
+  color: #1f2937;
+
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+}
+
+.pdf-report {
+  width: 794px;
+  min-height: 1123px;
+
+  padding: 54px 58px 64px;
+
+  background: #ffffff;
+}
+
+.pdf-header {
+  border-bottom: 2px solid #c99b4a;
+
+  padding-bottom: 22px;
+  margin-bottom: 28px;
+}
+
+.pdf-brand {
+  font-size: 11px;
+  font-weight: 700;
+
+  letter-spacing: 2px;
+
+  color: #a8752f;
+
+  text-transform: uppercase;
+
+  margin-bottom: 14px;
+}
+
+.pdf-title {
+  margin: 0;
+
+  font-size: 27px;
+  line-height: 1.2;
+
+  color: #111827;
+
+  font-weight: 700;
+}
+
+.pdf-subtitle {
+  margin-top: 8px;
+
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.pdf-meta {
+  display: flex;
+  justify-content: space-between;
+
+  margin-top: 18px;
+
+  font-size: 10px;
+  color: #6b7280;
+}
+
+.pdf-section {
+  margin-top: 27px;
+
+  page-break-inside: avoid;
+}
+
+.pdf-section-title {
+  display: flex;
+  align-items: center;
+
+  gap: 10px;
+
+  margin-bottom: 13px;
+
+  padding-bottom: 8px;
+
+  border-bottom: 1px solid #e5e7eb;
+
+  font-size: 14px;
+
+  font-weight: 700;
+
+  color: #111827;
+
+  text-transform: uppercase;
+
+  letter-spacing: .5px;
+}
+
+.pdf-section-number {
+  display: inline-flex;
+
+  align-items: center;
+  justify-content: center;
+
+  width: 28px;
+  height: 22px;
+
+  border-radius: 5px;
+
+  background: #f7edd9;
+
+  color: #a8752f;
+
+  font-size: 9px;
+
+  font-weight: 700;
+}
+
+.pdf-section-content {
+  font-size: 11.5px;
+  line-height: 1.7;
+
+  color: #374151;
+}
+
+.pdf-paragraph {
+  margin: 0 0 9px;
+}
+
+.pdf-bullet,
+.pdf-number {
+  display: flex;
+
+  gap: 9px;
+
+  margin: 0 0 8px;
+
+  line-height: 1.65;
+}
+
+.pdf-bullet > span,
+.pdf-number > span {
+  flex-shrink: 0;
+
+  color: #a8752f;
+
+  font-weight: 700;
+}
+
+.pdf-space {
+  height: 4px;
+}
+
+.pdf-images {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, 1fr);
+
+  gap: 14px;
+
+  margin-top: 10px;
+}
+
+.pdf-image-card {
+  margin: 0;
+
+  border: 1px solid #e5e7eb;
+
+  border-radius: 8px;
+
+  overflow: hidden;
+
+  background: #f9fafb;
+
+  page-break-inside: avoid;
+}
+
+.pdf-image-card img {
+  display: block;
+
+  width: 100%;
+
+  max-height: 310px;
+
+  object-fit: contain;
+
+  background: #f3f4f6;
+}
+
+.pdf-image-card figcaption {
+  padding: 7px 9px;
+
+  font-size: 9px;
+
+  color: #6b7280;
+
+  border-top: 1px solid #e5e7eb;
+}
+
+.pdf-footer {
+  margin-top: 40px;
+
+  padding-top: 12px;
+
+  border-top: 1px solid #e5e7eb;
+
+  display: flex;
+
+  justify-content: space-between;
+
+  font-size: 8.5px;
+
+  color: #9ca3af;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="pdf-report">
+
+  <header class="pdf-header">
+
+    <div class="pdf-brand">
+      TANYA AI · INSIGHT REPORT
+    </div>
+
+    <h1 class="pdf-title">
+      Laporan Insight Analisis
+    </h1>
+
+    <div class="pdf-subtitle">
+      Analisis berbasis percakapan dan data yang tersedia
+    </div>
+
+    <div class="pdf-meta">
+
+      <span>
+        ${dateText}
+      </span>
+
+      <span>
+        ${timeText} WIB
+      </span>
+
+    </div>
+
+  </header>
+
+  ${imageHTML}
+
+  ${sectionsHTML}
+
+  <footer class="pdf-footer">
+
+    <span>
+      Tanya AI
+    </span>
+
+    <span>
+      Generated ${dateText}
+    </span>
+
+  </footer>
+
+</div>
+
+</body>
+</html>
+`;
+}
+
+
+// =========================================================
+// EXPORT PDF
+// =========================================================
+
+async function exportInsightPDF() {
+
+  const insight =
+    getLatestAIInsight();
+
+  if (!insight) {
+
+    alert(
+      'Belum ada hasil analisis AI.'
+    );
+
+    return;
+  }
+
+  if (
+    !window.html2canvas ||
+    !window.jspdf
+  ) {
+
+    alert(
+      'Library PDF belum siap. Silakan refresh halaman.'
+    );
+
+    return;
+  }
+
+  const button =
+    document.getElementById(
+      'export-pdf-btn'
+    );
+
+  if (button) {
+
+    button.disabled = true;
+
+    button.innerHTML = `
+      <span>...</span>
+      <span>Menyiapkan</span>
+    `;
+  }
+
+  let report;
+
+  try {
+
+    report =
+      document.createElement(
+        'div'
+      );
+
+    report.innerHTML =
+      buildInsightReportHTML();
+
+    report.style.position =
+      'fixed';
+
+    report.style.left =
+      '-100000px';
+
+    report.style.top =
+      '0';
+
+    report.style.width =
+      '794px';
+
+    report.style.background =
+      '#ffffff';
+
+    report.style.zIndex =
+      '-1';
+
+    document.body.appendChild(
+      report
+    );
+
+    const canvas =
+      await html2canvas(
+        report.querySelector(
+          '.pdf-report'
+        ),
+        {
+          scale: 2,
+          useCORS: true,
+          backgroundColor:
+            '#ffffff'
+        }
+      );
+
+    const {
+      jsPDF
+    } =
+      window.jspdf;
+
+    const pdf =
+      new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
+      });
+
+    const pageWidth =
+      pdf.internal.pageSize.getWidth();
+
+    const pageHeight =
+      pdf.internal.pageSize.getHeight();
+
+    const margin =
+      8;
+
+    const contentWidth =
+      pageWidth -
+      margin * 2;
+
+    const imageHeight =
+      canvas.height *
+      contentWidth /
+      canvas.width;
+
+    let heightLeft =
+      imageHeight;
+
+    let position =
+      margin;
+
+    const imageData =
+      canvas.toDataURL(
+        'image/jpeg',
+        0.92
+      );
+
+    pdf.addImage(
+      imageData,
+      'JPEG',
+      margin,
+      position,
+      contentWidth,
+      imageHeight,
+      undefined,
+      'FAST'
+    );
+
+    heightLeft -=
+      pageHeight -
+      margin * 2;
+
+    while(heightLeft > 0){
+
+      position =
+        margin -
+        (
+          imageHeight -
+          heightLeft
+        );
+
+      pdf.addPage();
+
+      pdf.addImage(
+        imageData,
+        'JPEG',
+        margin,
+        position,
+        contentWidth,
+        imageHeight,
+        undefined,
+        'FAST'
+      );
+
+      heightLeft -=
+        pageHeight -
+        margin * 2;
+    }
+
+    const filename =
+      'tanya-insight-' +
+      new Date()
+        .toISOString()
+        .slice(0, 10) +
+      '.pdf';
+
+    pdf.save(
+      filename
+    );
+
+  }catch(error){
+
+    console.error(
+      'PDF export error:',
+      error
+    );
+
+    alert(
+      'Gagal membuat PDF. Coba refresh halaman lalu ulangi.'
+    );
+
+  }finally{
+
+    if(report){
+      report.remove();
+    }
+
+    if(button){
+
+      button.disabled =
+        false;
+
+      button.innerHTML = `
+        <span>▣</span>
+        <span class="export-pdf-label">PDF</span>
+      `;
+    }
+
+  }
+}
+
+
+// =========================================================
+// AKTIFKAN TOMBOL PDF
+// =========================================================
+
+if(
+  document.readyState === 'loading'
+){
+
+  document.addEventListener(
+    'DOMContentLoaded',
+    initPdfExport
+  );
+
+}else{
+
+  initPdfExport();
+
+}
+
