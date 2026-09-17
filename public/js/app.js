@@ -437,64 +437,131 @@ function initMagicLink(){
 
 
 // =========================================================
-// WINDOW LOAD
+// GOOGLE LOGIN
 // =========================================================
 
-window.onload = function(){
+function initGoogleLogin(){
+
+  if(
+    !window.google ||
+    !google.accounts ||
+    !google.accounts.id
+  ){
+    console.warn(
+      'Google Identity Services belum siap.'
+    );
+
+    setTimeout(
+      initGoogleLogin,
+      500
+    );
+
+    return;
+  }
+
+  const container =
+    document.getElementById(
+      'google-btn-container'
+    );
+
+  if(!container){
+    console.error(
+      'google-btn-container tidak ditemukan.'
+    );
+
+    return;
+  }
 
   try{
 
-    initMagicLink();
-
     google.accounts.id.initialize({
-      client_id:GOOGLE_CLIENT_ID,
-      callback:handleCredentialResponse,
-      auto_select: false,
-      cancel_on_tap_outside: false
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleCredentialResponse,
+      auto_select: true
     });
 
-    const googleBtnContainer =
-      document.getElementById('google-btn-container');
+    // Bersihkan jika sebelumnya pernah dirender
+    container.innerHTML = '';
 
     google.accounts.id.renderButton(
-      googleBtnContainer,
+      container,
       {
-        theme:'outline',
-        size:'large',
-        shape:'pill',
-        text:'signin_with',
-        width: Math.min(googleBtnContainer.offsetWidth || 300, 400)
+        theme: 'outline',
+        size: 'large',
+        shape: 'pill',
+        text: 'signin_with',
+        width: 320
       }
-
     );
 
+    console.log(
+      'Google Login berhasil diinisialisasi.'
+    );
 
     const savedToken =
       localStorage.getItem('id_token');
 
-    const hasMagicToken =
-      new URLSearchParams(window.location.search).has('magic_token');
+    if(
+      savedToken &&
+      !isTokenExpired(savedToken)
+    ){
 
+      userProfile =
+        decodeJwt(savedToken);
 
-    if(savedToken && !isTokenExpired(savedToken)){
-      userProfile = decodeJwt(savedToken);
-      restoreSession();   // ganti showChatScreen() + loadConversations(true) dengan ini
-    }else if(!hasMagicToken){
-      localStorage.removeItem('id_token');
+      showChatScreen();
+
+      loadConversations(true);
+
+      if(
+        typeof loadProjects === 'function'
+      ){
+        loadProjects();
+      }
+
+    }else{
+
+      localStorage.removeItem(
+        'id_token'
+      );
+
       google.accounts.id.prompt();
     }
 
-  }catch(e){
+  }catch(error){
 
-    console.error(e);
+    console.error(
+      'Google Login Error:',
+      error
+    );
 
-    document.getElementById(
-      'login-error'
-    ).style.display = 'block';
+    const loginError =
+      document.getElementById(
+        'login-error'
+      );
 
+    if(loginError){
+      loginError.style.display = 'block';
+    }
   }
+}
 
-};
+
+// Tunggu Google Identity Services
+if(
+  document.readyState === 'loading'
+){
+
+  document.addEventListener(
+    'DOMContentLoaded',
+    initGoogleLogin
+  );
+
+}else{
+
+  initGoogleLogin();
+
+}
 
 
 // =========================================================
