@@ -4355,7 +4355,7 @@ async function sendMessage(){
 
 
   try{
-
+    startAIThinking();
     const response =
       await fetch(
         '/api/chat',
@@ -4680,9 +4680,11 @@ async function sendMessage(){
 
           if(chunkText){
 
+            // AI mulai mengirim jawaban
+            stopAIThinking();
+          
             started = true;
-
-
+          
             const stayPinned =
               isNearBottom();
 
