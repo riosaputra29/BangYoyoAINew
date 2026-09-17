@@ -296,8 +296,12 @@ function initMagicLink(){
 window.onload = function(){
 
   try{
-
     initMagicLink();
+  }catch(e){
+    console.error('Magic link init error:', e);
+  }
+
+  try{
 
     google.accounts.id.initialize({
       client_id:GOOGLE_CLIENT_ID,
@@ -1920,14 +1924,6 @@ function buildCodeBlockHtml(
       ? lang.toLowerCase()
       : 'teks';
 
-  // Nama bahasa untuk highlight.js harus berupa identifier
-  // yang valid (huruf/angka/+/-/#), fallback ke "plaintext"
-  // kalau AI tidak menyertakan bahasa (mis. blok ``` polos).
-  const hljsLang =
-    lang && /^[a-zA-Z0-9_+#.-]+$/.test(lang)
-      ? lang.toLowerCase()
-      : 'plaintext';
-
 
   return (
 
@@ -1951,11 +1947,7 @@ function buildCodeBlockHtml(
 
       '</div>' +
 
-      '<pre><code class="hljs language-' +
-
-        escapeHtml(hljsLang) +
-
-        '">' +
+      '<pre><code>' +
 
         code +
 
@@ -1964,44 +1956,6 @@ function buildCodeBlockHtml(
     '</div>'
 
   );
-
-}
-
-
-// =========================================================
-// SYNTAX HIGHLIGHTING (VS CODE STYLE)
-// =========================================================
-
-function highlightCodeBlocks(container){
-
-  if(
-    !container ||
-    typeof hljs === 'undefined'
-  ){
-    return;
-  }
-
-  const blocks =
-    container.querySelectorAll(
-      'pre code:not([data-highlighted])'
-    );
-
-  blocks.forEach(function(block){
-
-    try{
-
-      hljs.highlightElement(block);
-
-    }catch(err){
-
-      console.error(
-        'Gagal menerapkan syntax highlighting:',
-        err
-      );
-
-    }
-
-  });
 
 }
 
@@ -3004,7 +2958,6 @@ async function loadChatHistory(conversationId){
 
       if(role === 'ai'){
         bubble.innerHTML = renderMarkdown(msg.content);
-        highlightCodeBlocks(bubble);
       }else{
         const span = document.createElement('span');
         span.textContent = msg.content;
@@ -3976,12 +3929,6 @@ async function processVoiceAudio(
 
         aiBubble.textContent =
           answer;
-
-      }else{
-
-        highlightCodeBlocks(
-          aiBubble
-        );
 
       }
 
@@ -4990,10 +4937,6 @@ async function sendMessage(){
               fullText
             );
 
-            highlightCodeBlocks(
-              aiBubble
-            );
-
             if(
               window.MathJax &&
               MathJax.typesetPromise
@@ -5712,4 +5655,59 @@ document.addEventListener('click', function (e) {
 
   const zoomImg = document.createElement('img');
   zoomImg.src = img.src;
-  zoomImg.alt = img.alt || 'Preview ga
+  zoomImg.alt = img.alt || 'Preview gambar';
+
+  overlay.appendChild(zoomImg);
+  document.body.appendChild(overlay);
+
+  requestAnimationFrame(() => {
+    overlay.classList.add('active');
+  });
+
+  overlay.addEventListener('click', () => {
+    overlay.classList.remove('active');
+
+    setTimeout(() => {
+      overlay.remove();
+    }, 200);
+  });
+});
+
+// =========================================================
+// EXPORT INSIGHT PDF
+// =========================================================
+
+function initPdfExport() {
+
+  const header = document.querySelector(
+    '#chat-screen header'
+  );
+
+  if (!header) return;
+
+  if (document.getElementById('export-pdf-btn')) {
+    return;
+  }
+
+  const userMenu =
+    document.getElementById('user-menu');
+
+  const button =
+    document.createElement('button');
+
+  button.id = 'export-pdf-btn';
+  button.type = 'button';
+  button.title = 'Export Insight PDF';
+
+  button.innerHTML = `
+    <span>▣</span>
+    <span class="export-pdf-label">PDF</span>
+  `;
+
+  button.addEventListener(
+    'click',
+    exportInsightPDF
+  );
+
+  if (userMenu) {
+    userMenu.insertBef
