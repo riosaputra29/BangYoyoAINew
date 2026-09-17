@@ -1479,8 +1479,8 @@ export default async function handler(
   // const maxOutputTokens = 800;
   const maxOutputTokens =
     useVision
-      ? 800
-      : 600;
+      ? 1000
+      : 800;
   // const maxOutputTokens =
   // useVision ? 800 : 800;
 
