@@ -102,6 +102,64 @@ function startAIThinking (aiBubble){
     }, 1200);
 }
 
+function highlightCode(lang, code) {
+  const map = {
+    js: 'javascript',
+    jsx: 'javascript',
+    javascript: 'javascript',
+
+    ts: 'typescript',
+    typescript: 'typescript',
+
+    php: 'php',
+
+    py: 'python',
+    python: 'python',
+
+    html: 'xml',
+    xml: 'xml',
+
+    css: 'css',
+
+    sql: 'sql',
+
+    json: 'json',
+
+    bash: 'bash',
+    sh: 'bash',
+    shell: 'bash',
+
+    java: 'java',
+    c: 'c',
+    cpp: 'cpp',
+    csharp: 'csharp',
+
+    yaml: 'yaml',
+    yml: 'yaml',
+
+    markdown: 'markdown',
+    md: 'markdown'
+  };
+
+  const language = map[String(lang || '').toLowerCase()];
+
+  if (
+    window.hljs &&
+    language &&
+    hljs.getLanguage(language)
+  ) {
+    try {
+      return hljs.highlight(code, {
+        language
+      }).value;
+    } catch (err) {
+      console.warn('Highlight error:', err);
+    }
+  }
+
+  return escapeHtml(code);
+}
+
 
 function stopAIThinking(aiBubble){
 
