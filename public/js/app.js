@@ -4797,17 +4797,31 @@ async function sendMessage(){
 
     // SAVE AI HISTORY
 
+    // if(fullText){
+
+    //   history.push({
+
+    //     role:'assistant',
+
+    //     content:
+    //       fullText
+
+    //   });
+
+    // }
+
     if(fullText){
 
       history.push({
-
+    
         role:'assistant',
-
+    
         content:
           fullText
-
+    
       });
-
+    
+      showChatSuggestions(aiBubble);
     }
 
     else if(!started){
