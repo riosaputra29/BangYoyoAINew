@@ -60,7 +60,7 @@ let currentProjectId = null;   // tambahkan ini
 
 let aiThinkingTimer = null;
 
-function startBubbleThinking(aiBubble){
+function startAIThinking (aiBubble){
 
   const text =
     aiBubble.querySelector(
@@ -4349,7 +4349,7 @@ async function sendMessage(){
     </div>
   `;
   
-  startBubbleThinking(aiBubble);
+  startAIThinking (aiBubble);
   
   let fullText = '';
   
