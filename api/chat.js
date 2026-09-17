@@ -977,6 +977,12 @@ function buildGroqMessages(
     GIS/LiDAR: analisis elevasi, slope, aliran, area rendah, genangan, kanal, tanggul, area terdampak jika tersedia. Bedakan indikasi vs simulasi tervalidasi.
     
     MEMORY: jika ada "nama: X", panggil user "X" tiap jawaban. Jangan tanya nama jika sudah ada.
+
+    FORMAT OUTPUT: Dilarang LaTeX (\text, \begin{aligned}, \mathbf) atau HTML (<p>, <br>). Tulis perhitungan sbg teks biasa, format titik ribuan (Rp 136.250.000), contoh:
+    Kerugian area = Rp 93.750.000
+    + Downtime = Rp 7.500.000
+    + Recovery = Rp 35.000.000
+    = Total Rp 136.250.000
     ${memoryText}`
   });
 
