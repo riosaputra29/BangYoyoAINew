@@ -103,7 +103,7 @@ function startAIThinking (aiBubble){
 }
 
 
-function stopBubbleThinking(aiBubble){
+function stopAIThinking(aiBubble){
 
   if(aiThinkingTimer){
 
@@ -4417,7 +4417,7 @@ async function sendMessage(){
     // ============================================================
     if(response.status === 429){
 
-      stopBubbleThinking(
+      stopAIThinking(
         aiBubble
       );
     
@@ -4690,7 +4690,7 @@ async function sendMessage(){
           // Token pertama dari AI sudah diterima
           if(!started){
         
-            stopBubbleThinking(
+            stopAIThinking(
               aiBubble
             );
         
