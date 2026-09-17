@@ -3447,3 +3447,61 @@ body.sidebar-resizing #sidebar::before {
   }
 
 }
+
+/* =========================================================
+   IMAGE ZOOM
+   ========================================================= */
+
+.image-zoom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 30px;
+
+  background: rgba(0, 0, 0, 0.88);
+
+  opacity: 0;
+  cursor: zoom-out;
+
+  transition: opacity .2s ease;
+
+  backdrop-filter: blur(8px);
+}
+
+.image-zoom-overlay.active {
+  opacity: 1;
+}
+
+.image-zoom-overlay img {
+  max-width: 92vw;
+  max-height: 90vh;
+
+  width: auto;
+  height: auto;
+
+  object-fit: contain;
+
+  border-radius: 8px;
+
+  cursor: zoom-out;
+
+  transform: scale(.92);
+
+  transition: transform .2s ease;
+
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, .45);
+}
+
+.image-zoom-overlay.active img {
+  transform: scale(1);
+}
+
+.bubble img {
+  cursor: zoom-in;
+}
