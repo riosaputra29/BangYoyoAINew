@@ -5636,3 +5636,34 @@ input.addEventListener(
 
   }
 );
+
+document.addEventListener('click', function (e) {
+  const img = e.target.closest('.bubble img');
+
+  if (!img) return;
+
+  // Jangan proses gambar kecil/icon
+  if (img.width < 100 || img.height < 100) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'image-zoom-overlay';
+
+  const zoomImg = document.createElement('img');
+  zoomImg.src = img.src;
+  zoomImg.alt = img.alt || 'Preview gambar';
+
+  overlay.appendChild(zoomImg);
+  document.body.appendChild(overlay);
+
+  requestAnimationFrame(() => {
+    overlay.classList.add('active');
+  });
+
+  overlay.addEventListener('click', () => {
+    overlay.classList.remove('active');
+
+    setTimeout(() => {
+      overlay.remove();
+    }, 200);
+  });
+});
