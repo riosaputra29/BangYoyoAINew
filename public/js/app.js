@@ -202,8 +202,9 @@ function highlightCode(lang, code){
 // =========================================================
 
 function buildCodeBlockHtml(
-  lang,
-  code
+  block.lang,
+  block.code
+);
 ){
 
   const label =
