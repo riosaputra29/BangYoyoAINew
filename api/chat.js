@@ -1425,14 +1425,12 @@ export default async function handler(
       : MODEL;
 
 
-  // const maxOutputTokens =
-  //   useVision
-  //     ? 2000
-  //     : 1200;
   const maxOutputTokens =
-  useVision ? 800 : 800;
-
-
+    useVision
+      ? 2000
+      : 1200;
+  // const maxOutputTokens =
+  // useVision ? 800 : 800;
 
   /* =======================================================
      SAVE USER MESSAGE
