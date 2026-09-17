@@ -177,6 +177,7 @@ function showChatScreen(){
 
   document.getElementById('chat-screen').style.display =
     'flex';
+  initPdfExport();
 }
 
 
