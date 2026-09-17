@@ -4358,7 +4358,8 @@ async function sendMessage(){
 
 
   try{
-    startAIThinking();
+
+    startAIThinking(aiBubble);
     const response =
       await fetch(
         '/api/chat',
