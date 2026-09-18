@@ -118,6 +118,27 @@
     href="/css/style.css"
   >
 
+  <!-- =========================================================
+       OVERRIDE: HILANGKAN BORDER PADA CODE BLOCK
+       Dimuat setelah style.css utama supaya urutan cascade
+       menang, plus !important untuk jaga-jaga kalau style.css
+       pakai selector yang lebih spesifik.
+       ========================================================= -->
+  <style>
+
+    .code-block,
+    .code-block pre,
+    .code-block code,
+    .code-block-header {
+
+      border: none !important;
+      box-shadow: none !important;
+      outline: none !important;
+
+    }
+
+  </style>
+
 </head>
 
 
