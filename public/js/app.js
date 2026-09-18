@@ -4485,10 +4485,105 @@ function createTypewriter(
 
   let displayedLength = 0;
   let timer = null;
+  let streamFinished = false;
 
 
+  // =======================================================
+  // DETEKSI RANGE BLOK KODE
+  // =======================================================
+  // Dipakai supaya blok kode TIDAK diketik karakter-per-
+  // karakter. Selama pagar penutup ``` belum ada, teks di
+  // dalam blok ditahan (tidak ditampilkan sebagian). Begitu
+  // pagar penutup muncul, blok langsung tampil utuh sekaligus.
+
+  function getCodeRanges(text){
+
+    if(text.indexOf('```') === -1){
+      return [];
+    }
+
+    const ranges = [];
+
+    const closedRe =
+      /^[ \t]*```([a-zA-Z0-9_+#.-]*)[ \t]*\r?\n([\s\S]*?)^[ \t]*```[ \t]*$/gm;
+
+    let match;
+
+    while((match = closedRe.exec(text)) !== null){
+
+      ranges.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        closed: true
+      });
+
+    }
+
+    const searchFrom =
+      ranges.length
+        ? ranges[ranges.length - 1].end
+        : 0;
+
+    const rest =
+      text.slice(searchFrom);
+
+    const openMatch =
+      rest.match(
+        /^[ \t]*```([a-zA-Z0-9_+#.-]*)[ \t]*\r?\n([\s\S]*)$/m
+      );
+
+    if(openMatch){
+
+      ranges.push({
+        start: searchFrom + openMatch.index,
+        end: text.length,
+        closed: false
+      });
+
+    }
+
+    return ranges;
+  }
+
+
+  function clampCandidate(
+    fullText,
+    candidate
+  ){
+
+    const ranges =
+      getCodeRanges(fullText);
+
+    for(const range of ranges){
+
+      if(
+        candidate > range.start &&
+        candidate < range.end
+      ){
+
+        // Blok kode sudah lengkap (atau stream sudah kelar)
+        // -> lompat langsung ke akhir blok, tampil utuh.
+        if(range.closed || streamFinished){
+          return range.end;
+        }
+
+        // Blok kode masih terbuka -> tahan sebelum pagar
+        // pembuka, tunggu sampai lengkap dulu.
+        return range.start;
+      }
+
+    }
+
+    return candidate;
+  }
+
+
+  // highlight=false selama proses ketik (blok kode tampil
+  // apa adanya, belum berwarna) supaya hljs TIDAK dipanggil
+  // berulang. highlight=true cuma dipakai sekali di akhir.
   function renderUpTo(
-    length
+    length,
+    highlight
   ){
 
     const fullText =
@@ -4505,9 +4600,9 @@ function createTypewriter(
         )
       );
 
-    highlightCodeBlocks(
-      aiBubble
-    );
+    if(highlight){
+      highlightCodeBlocks(aiBubble);
+    }
 
     if(
       window.MathJax &&
@@ -4536,22 +4631,38 @@ function createTypewriter(
       getFullText();
 
     if(
-      displayedLength <
+      displayedLength >=
       fullText.length
     ){
+      return;
+    }
 
-      displayedLength =
-        Math.min(
-          fullText.length,
-          displayedLength +
-            CHARS_PER_TICK
-        );
-
-      renderUpTo(
-        displayedLength
+    const candidate =
+      Math.min(
+        fullText.length,
+        displayedLength +
+          CHARS_PER_TICK
       );
 
+    const adjusted =
+      clampCandidate(
+        fullText,
+        candidate
+      );
+
+    // Masih tertahan di depan blok kode yang belum lengkap
+    // -> jangan render ulang, tunggu tick berikutnya.
+    if(adjusted === displayedLength){
+      return;
     }
+
+    displayedLength =
+      adjusted;
+
+    renderUpTo(
+      displayedLength,
+      false
+    );
 
   }
 
@@ -4569,11 +4680,9 @@ function createTypewriter(
   }
 
 
-  // Dipanggil setelah stream network selesai — menunggu
-  // sampai animasi ngetik benar-benar mengejar teks terakhir,
-  // baru resolve. Supaya history/quick actions/suggestion
-  // baru muncul setelah pengetikan visual selesai.
   function finish(){
+
+    streamFinished = true;
 
     start();
 
@@ -4592,18 +4701,15 @@ function createTypewriter(
                 fullText.length
               ){
 
-                clearInterval(
-                  check
-                );
-
-                clearInterval(
-                  timer
-                );
+                clearInterval(check);
+                clearInterval(timer);
 
                 timer = null;
 
+                // Highlight sekali saja, di akhir.
                 renderUpTo(
-                  fullText.length
+                  fullText.length,
+                  true
                 );
 
                 resolve();
