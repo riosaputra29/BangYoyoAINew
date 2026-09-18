@@ -5465,10 +5465,10 @@ async function sendMessage(){
     // Jangan unlock tombol kalau countdown rate limit
     // sedang jalan — biar countdown yang mengatur kapan
     // tombol kirim aktif lagi, bukan finally ini.
-    if(!rateLimitCountdownTimer){
-      sendBtn.disabled = false;
+      if(!rateLimitCountdownTimer){
+        sendBtn.disabled = false;
+      }
     }
-
   }
 
 
