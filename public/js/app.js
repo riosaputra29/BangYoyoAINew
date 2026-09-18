@@ -1,0 +1,6752 @@
+// =========================================================
+// KONFIGURASI
+// =========================================================
+
+const GOOGLE_CLIENT_ID =
+  "475879074184-5fu3p4oci9o3rbl8khtnv2260k6k7bc2.apps.googleusercontent.com";
+
+// Chat memanggil backend sendiri:
+// /api/chat
+//
+// Backend yang menyimpan API key dan meneruskan permintaan
+// ke provider AI.
+
+// Untuk gambar:
+// { type:"image_url", image_url:{url:dataURL} }
+
+const DUMMY_AVATAR =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%232c2f38'/%3E%3Ccircle cx='32' cy='25' r='12' fill='%238f929e'/%3E%3Cellipse cx='32' cy='58' rx='20' ry='16' fill='%238f929e'/%3E%3C/svg%3E";
+
+
+// =========================================================
+// UPLOAD CONFIG
+// =========================================================
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_TEXT_BYTES = 300 * 1024;
+const MAX_PDF_BYTES = 15 * 1024 * 1024;
+const MAX_TEXT_CHARS_IN_PROMPT = 20000;
+
+const TEXTLIKE_EXT = [
+  '.txt',
+  '.md',
+  '.csv',
+  '.json',
+  '.log'
+];
+
+
+// =========================================================
+// STATE
+// =========================================================
+
+let history = [];
+
+let userProfile = null;
+
+let pendingAttachment = null;
+
+let conversationsList = [];
+
+let currentConversationId = null;
+
+let currentProjectId = null;   // tambahkan ini
+
+// =========================================================
+// AI PROCESSING STATUS
+// =========================================================
+
+
+let aiThinkingTimer = null;
+
+function startAIThinking (aiBubble){
+
+  const text =
+    aiBubble.querySelector(
+      '.ai-thinking-text'
+    );
+
+  if(!text) return;
+
+  const status = [
+    'Menganalisis pertanyaan...',
+    'Memeriksa konteks...',
+    'Menyusun informasi...',
+    'Menganalisis data...',
+    'Menyiapkan jawaban...'
+  ];
+
+  let index = 0;
+
+  if(aiThinkingTimer){
+    clearInterval(aiThinkingTimer);
+  }
+
+  aiThinkingTimer =
+    setInterval(() => {
+
+      index =
+        (index + 1) % status.length;
+
+      if(
+        document.body.contains(aiBubble) &&
+        text
+      ){
+
+        text.textContent =
+          status[index];
+
+      }
+
+    }, 1200);
+}
+
+
+function stopAIThinking(aiBubble){
+
+  if(aiThinkingTimer){
+
+    clearInterval(
+      aiThinkingTimer
+    );
+
+    aiThinkingTimer = null;
+  }
+
+  const thinking =
+    aiBubble.querySelector(
+      '.ai-thinking'
+    );
+
+  if(thinking){
+    thinking.remove();
+  }
+}
+
+
+// =========================================================
+// JWT
+// =========================================================
+
+function decodeJwt(token){
+
+  const payload = token.split('.')[1];
+
+  return JSON.parse(
+    atob(
+      payload
+        .replace(/-/g,'+')
+        .replace(/_/g,'/')
+    )
+  );
+}
+
+
+function isTokenExpired(token){
+
+  try{
+
+    const { exp } = decodeJwt(token);
+
+    return !exp ||
+      (Date.now() / 1000) > exp;
+
+  }catch(e){
+
+    return true;
+
+  }
+}
+
+
+// =========================================================
+// SHOW CHAT
+// =========================================================
+
+function showChatScreen(){
+
+  document.getElementById('user-avatar').src =
+    userProfile.picture || DUMMY_AVATAR;
+
+  document.getElementById('user-name').textContent =
+    userProfile.name || 'User';
+
+  document.getElementById('login-screen').style.display =
+    'none';
+
+  document.getElementById('chat-screen').style.display =
+    'flex';
+  initPdfExport();
+}
+
+
+// =========================================================
+// GOOGLE LOGIN
+// =========================================================
+
+function handleCredentialResponse(response){
+
+  userProfile = decodeJwt(
+    response.credential
+  );
+
+  localStorage.setItem(
+    'id_token',
+    response.credential
+  );
+
+  showChatScreen();
+
+  loadConversations(true);
+  loadProjects(true);
+
+  document.getElementById(
+    'chat-input'
+  ).focus();
+}
+
+
+// =========================================================
+// MAGIC LINK LOGIN
+// =========================================================
+
+function setMagicStatus(message, type=''){
+  const el = document.getElementById('magic-link-status');
+  if(!el) return;
+  el.textContent = message || '';
+  el.className = 'magic-link-status' + (type ? ' ' + type : '');
+}
+
+async function sendMagicLink(email){
+  const btn = document.getElementById('magic-link-btn');
+  const input = document.getElementById('magic-email');
+  if(btn) btn.disabled = true;
+  setMagicStatus('Mengirim link login ke email kamu...');
+
+  try{
+    const response = await fetch('/api/auth/send-magic-link', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email})
+    });
+    const data = await response.json().catch(() => ({}));
+    if(!response.ok) throw new Error(data.error || 'Gagal mengirim magic link.');
+    setMagicStatus('Magic link sudah dikirim. Cek inbox atau folder spam email kamu.', 'success');
+    if(input) input.value = '';
+  }catch(e){
+    console.error('Magic link error:', e);
+    setMagicStatus(e.message || 'Gagal mengirim magic link.', 'error');
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+async function completeMagicLogin(token){
+  if(!token) return false;
+  setMagicStatus('Memverifikasi link login...');
+
+  try{
+    const response = await fetch('/api/auth/complete-magic-link', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token})
+    });
+    const data = await response.json().catch(() => ({}));
+    if(!response.ok || !data.token) throw new Error(data.error || 'Magic link tidak valid atau sudah kedaluwarsa.');
+
+    localStorage.setItem('id_token', data.token);
+    userProfile = data.user || decodeJwt(data.token);
+
+    // Hilangkan token dari address bar dan history browser.
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    showChatScreen();
+    await loadConversations(true);
+    document.getElementById('chat-input').focus();
+    return true;
+  }catch(e){
+    console.error('Magic link verification error:', e);
+    window.history.replaceState({}, document.title, window.location.pathname);
+    setMagicStatus(e.message || 'Magic link tidak valid.', 'error');
+    return false;
+  }
+}
+
+function initMagicLink(){
+  const form = document.getElementById('magic-link-form');
+  if(form){
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const email = document.getElementById('magic-email').value.trim();
+      if(email) sendMagicLink(email);
+    });
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('magic_token');
+  if(token) completeMagicLogin(token);
+}
+
+
+// =========================================================
+// WINDOW LOAD
+// =========================================================
+
+window.onload = function(){
+
+  try{
+
+    initMagicLink();
+
+    google.accounts.id.initialize({
+      client_id:GOOGLE_CLIENT_ID,
+      callback:handleCredentialResponse,
+      auto_select: false,
+      cancel_on_tap_outside: false
+    });
+
+    const googleBtnContainer =
+      document.getElementById('google-btn-container');
+
+    google.accounts.id.renderButton(
+      googleBtnContainer,
+      {
+        theme:'outline',
+        size:'large',
+        shape:'pill',
+        text:'signin_with',
+        width: Math.min(googleBtnContainer.offsetWidth || 300, 400)
+      }
+
+    );
+
+
+    const savedToken =
+      localStorage.getItem('id_token');
+
+    const hasMagicToken =
+      new URLSearchParams(window.location.search).has('magic_token');
+
+
+    if(savedToken && !isTokenExpired(savedToken)){
+      userProfile = decodeJwt(savedToken);
+      restoreSession();   // ganti showChatScreen() + loadConversations(true) dengan ini
+    }else if(!hasMagicToken){
+      localStorage.removeItem('id_token');
+      google.accounts.id.prompt();
+    }
+
+  }catch(e){
+
+    console.error(e);
+
+    document.getElementById(
+      'login-error'
+    ).style.display = 'block';
+
+  }
+
+};
+
+
+// =========================================================
+// SIGN OUT
+// =========================================================
+
+document
+  .getElementById('signout-btn')
+  .addEventListener('click', () => {
+
+    // Hapus session aplikasi
+    localStorage.removeItem('id_token');
+    localStorage.removeItem('userProfile');
+
+    // Matikan auto-select Google
+    if (window.google?.accounts?.id) {
+      google.accounts.id.disableAutoSelect();
+    }
+
+    // Reset user
+    userProfile = null;
+
+    // Reset chat
+    history = [];
+    conversationsList = [];
+    currentConversationId = null;
+
+    clearAttachment();
+
+    document.getElementById('messages').innerHTML =
+      emptyStateHTML;
+
+    // Tutup sidebar
+    closeSidebar();
+
+    // Kembali ke login
+    document.getElementById('chat-screen').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+
+    // Render ulang Google Login
+    const googleBtnContainer =
+      document.getElementById('google-btn-container');
+
+    if (
+      googleBtnContainer &&
+      window.google?.accounts?.id
+    ) {
+      googleBtnContainer.innerHTML = '';
+
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleCredentialResponse,
+        auto_select: false,
+        cancel_on_tap_outside: false
+      });
+
+      google.accounts.id.renderButton(
+        googleBtnContainer,
+        {
+          theme: 'outline',
+          size: 'large',
+          shape: 'pill',
+          text: 'signin_with',
+          width: Math.min(
+            googleBtnContainer.offsetWidth || 300,
+            400
+          )
+        }
+      );
+    }
+
+  });
+
+
+// =========================================================
+// DOM REFERENCES
+// =========================================================
+
+const input =
+  document.getElementById('chat-input');
+
+const sendBtn =
+  document.getElementById('send-btn');
+
+const startVoiceBtn =
+  document.getElementById('start-voice-btn');
+
+
+
+// =========================================================
+// DYNAMIC SEND BUTTON
+// =========================================================
+
+function updateSendButton() {
+  if (!input || !sendBtn) return;
+
+  const hasText = input.value.trim().length > 0;
+
+  if (hasText && !aiSpeaking) {
+    sendBtn.classList.add('visible');
+
+    if (startVoiceBtn) {
+      startVoiceBtn.style.display = 'none';
+    }
+  } else {
+    sendBtn.classList.remove('visible');
+
+    if (startVoiceBtn) {
+      startVoiceBtn.style.display = 'flex';
+    }
+  }
+}
+
+
+// =========================================================
+// DETEKSI SAAT USER MENGETIK
+// =========================================================
+
+if (input) {
+
+  input.addEventListener(
+    'input',
+    updateSendButton
+  );
+
+}
+
+
+// =========================================================
+// KONDISI AWAL
+// =========================================================
+
+updateSendButton();
+
+const messagesEl =
+  document.getElementById('messages');
+
+const headerEl =
+  document.querySelector(
+    '#chat-screen header'
+  );
+
+const scrollBtn =
+  document.getElementById('scroll-bottom');
+
+const emptyStateHTML =
+  document.getElementById(
+    'empty-state'
+  ).outerHTML;
+
+
+// UPLOAD
+
+const fileInput =
+  document.getElementById('file-input');
+
+const attachBtn =
+  document.getElementById('attach-btn');
+
+const attPreview =
+  document.getElementById(
+    'attachment-preview'
+  );
+
+const attImgPreview =
+  document.getElementById(
+    'att-img-preview'
+  );
+
+const attFileIcon =
+  document.getElementById(
+    'att-file-icon'
+  );
+
+const attName =
+  document.getElementById(
+    'att-name'
+  );
+
+const attSize =
+  document.getElementById(
+    'att-size'
+  );
+
+const attRemove =
+  document.getElementById(
+    'att-remove'
+  );
+
+
+// SIDEBAR
+
+const sidebarEl =
+  document.getElementById(
+    'sidebar'
+  );
+
+const sidebarToggleBtn =
+  document.getElementById(
+    'sidebar-toggle-btn'
+  );
+
+const sidebarBackdrop =
+  document.getElementById(
+    'sidebar-backdrop'
+  );
+
+const newChatBtn =
+  document.getElementById(
+    'new-chat-btn'
+  );
+
+const sidebarChatListEl =
+  document.getElementById(
+    'sidebar-chat-list'
+  );
+
+
+// =========================================================
+// SIDEBAR
+// =========================================================
+
+function openSidebar(){
+
+  sidebarEl.classList.add(
+    'open'
+  );
+
+  sidebarBackdrop.classList.add(
+    'visible'
+  );
+
+}
+
+
+function closeSidebar(){
+
+  sidebarEl.classList.remove(
+    'open'
+  );
+
+  sidebarBackdrop.classList.remove(
+    'visible'
+  );
+
+}
+
+
+sidebarToggleBtn.addEventListener(
+  'click',
+  () => {
+
+    sidebarEl.classList.contains('open')
+      ? closeSidebar()
+      : openSidebar();
+
+  }
+);
+
+
+sidebarBackdrop.addEventListener(
+  'click',
+  closeSidebar
+);
+
+
+// =========================================================
+// LOAD CONVERSATIONS
+// =========================================================
+
+async function loadConversations(selectFirst, projectId = null){
+
+  const idToken = localStorage.getItem('id_token');
+  if(!idToken) return;
+
+  try{
+
+    const url = projectId
+      ? '/api/conversations?projectId=' + encodeURIComponent(projectId)
+      : '/api/conversations';
+
+    const response = await fetch(url, {
+      headers: { 'Authorization': 'Bearer ' + idToken }
+    });
+
+    if(!response.ok) return;
+
+    const data = await response.json();
+
+    conversationsList =
+      Array.isArray(data.conversations) ? data.conversations : [];
+
+    renderConversationList();
+
+    if(
+      selectFirst &&
+      conversationsList.length > 0 &&
+      currentConversationId === null
+    ){
+      await selectConversation(conversationsList[0].id);
+    }
+
+  }catch(e){
+    console.error('Gagal memuat daftar percakapan:', e);
+  }
+}
+
+
+// =========================================================
+// RENDER CONVERSATION LIST
+// =========================================================
+
+function renderConversationList(){
+
+  sidebarChatListEl.innerHTML = '';
+
+
+  if(
+    conversationsList.length === 0
+  ){
+
+    const note =
+      document.createElement(
+        'div'
+      );
+
+    note.className =
+      'sidebar-empty-note';
+
+    note.textContent =
+      'Belum ada percakapan. Mulai ngobrol untuk membuat yang pertama.';
+
+    sidebarChatListEl.appendChild(
+      note
+    );
+
+    return;
+
+  }
+
+
+  for(
+    const conv of conversationsList
+  ){
+
+    const item =
+      document.createElement(
+        'div'
+      );
+
+
+    item.className =
+      'sidebar-chat-item' +
+      (
+        Number(conv.id) ===
+        Number(currentConversationId)
+          ? ' active'
+          : ''
+      );
+
+
+    item.innerHTML = `
+
+      <button
+        type="button"
+        class="sidebar-chat-main"
+        aria-label="Buka percakapan"
+      >
+
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+        </svg>
+
+        <span></span>
+
+      </button>
+
+
+      <button
+        type="button"
+        class="sidebar-delete-btn"
+        title="Hapus percakapan"
+        aria-label="Hapus percakapan"
+      >
+
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M3 6h18"/>
+          <path d="M8 6V4h8v2"/>
+          <path d="M19 6l-1 14H6L5 6"/>
+          <path d="M10 11v5"/>
+          <path d="M14 11v5"/>
+        </svg>
+
+      </button>
+
+    `;
+
+
+    const mainBtn =
+      item.querySelector(
+        '.sidebar-chat-main'
+      );
+
+
+    mainBtn
+      .querySelector('span')
+      .textContent =
+      conv.title ||
+      'Percakapan';
+
+
+    mainBtn.title =
+      conv.title ||
+      'Percakapan';
+
+
+    mainBtn.addEventListener(
+      'click',
+      () =>
+        selectConversation(
+          conv.id
+        )
+    );
+
+
+    item
+      .querySelector(
+        '.sidebar-delete-btn'
+      )
+      .addEventListener(
+        'click',
+        (e) => {
+
+          e.preventDefault();
+
+          e.stopPropagation();
+
+          deleteConversationFromSidebar(
+            conv.id
+          );
+
+        }
+      );
+
+
+    sidebarChatListEl.appendChild(
+      item
+    );
+
+  }
+
+}
+
+
+// =========================================================
+// DELETE CONVERSATION
+// =========================================================
+
+async function deleteConversationFromSidebar(
+  conversationId
+){
+
+  const conversation =
+    conversationsList.find(
+      c =>
+        Number(c.id) ===
+        Number(conversationId)
+    );
+
+
+  if(!conversation) return;
+
+
+  const title =
+    conversation.title ||
+    'Percakapan';
+
+
+  const confirmed =
+    confirm(
+      `Hapus percakapan "${title}"?\n\nSemua pesan dalam percakapan ini akan dihapus.`
+    );
+
+
+  if(!confirmed) return;
+
+
+  const idToken =
+    localStorage.getItem(
+      'id_token'
+    );
+
+
+  if(!idToken){
+
+    alert(
+      'Sesi login sudah habis. Silakan login kembali.'
+    );
+
+    return;
+
+  }
+
+
+  try{
+
+    const response =
+      await fetch(
+        '/api/conversations?conversationId=' +
+        encodeURIComponent(
+          conversationId
+        ),
+        {
+          method:'DELETE',
+
+          headers:{
+            'Authorization':
+              'Bearer ' + idToken
+          }
+        }
+      );
+
+
+    const data =
+      await response
+        .json()
+        .catch(
+          () => ({})
+        );
+
+
+    if(!response.ok){
+
+      throw new Error(
+        data.error ||
+        'Gagal menghapus percakapan.'
+      );
+
+    }
+
+
+    conversationsList =
+      conversationsList.filter(
+        c =>
+          Number(c.id) !==
+          Number(conversationId)
+      );
+
+
+    if(
+      Number(currentConversationId) ===
+      Number(conversationId)
+    ){
+
+      currentConversationId =
+        null;
+
+      history = [];
+
+      clearAttachment();
+
+      document.getElementById(
+        'messages'
+      ).innerHTML =
+        emptyStateHTML;
+
+    }
+
+
+    renderConversationList();
+
+  }catch(e){
+
+    console.error(
+      'Delete conversation error:',
+      e
+    );
+
+    alert(
+      e.message ||
+      'Gagal menghapus percakapan.'
+    );
+
+  }
+
+}
+
+
+// =========================================================
+// SELECT CONVERSATION
+// =========================================================
+
+async function selectConversation(conversationId){
+
+  if(conversationId === currentConversationId){
+    closeSidebar();
+    return;
+  }
+
+  currentConversationId = conversationId;
+
+  const conv = conversationsList.find(
+    c => Number(c.id) === Number(conversationId)
+  );
+
+  const convProjectId = conv?.project_id ?? null;
+
+  currentProjectId = convProjectId;
+
+  if(convProjectId){
+    localStorage.setItem('active_project_id', convProjectId);
+  }else{
+    localStorage.removeItem('active_project_id');
+    localStorage.removeItem('active_project_name');
+  }
+
+  document.querySelectorAll('.project-item').forEach(item => {
+    item.classList.toggle(
+      'active',
+      Number(item.dataset.projectId) === Number(convProjectId)
+    );
+  });
+
+  renderConversationList();
+  history = [];
+  document.getElementById('messages').innerHTML = emptyStateHTML;
+  await loadChatHistory(conversationId);
+  closeSidebar();
+}
+
+
+// =========================================================
+// NEW CHAT
+// =========================================================
+
+newChatBtn.addEventListener('click', async () => {
+
+  if(
+    history.length > 0 &&
+    !confirm('Mulai percakapan baru? Tampilan chat saat ini akan dikosongkan.')
+  ){
+    return;
+  }
+
+  currentConversationId = null;
+  currentProjectId = null;
+
+  history = [];
+
+  localStorage.removeItem('active_project_id');
+  localStorage.removeItem('active_project_name');
+
+  document.querySelectorAll('.project-item').forEach(item => {
+    item.classList.remove('active');
+  });
+
+  clearAttachment();
+
+  document.getElementById('messages').innerHTML = emptyStateHTML;
+
+  await loadConversations(false);   // tunggu sampai selesai — ini sudah otomatis render list
+
+  closeSidebar();
+  input.focus();
+});
+
+
+// =========================================================
+// MESSAGE CLICK
+// =========================================================
+
+document
+  .getElementById('messages')
+  .addEventListener(
+    'click',
+    (e) => {
+
+      const chip =
+        e.target.closest(
+          '.chip'
+        );
+
+
+      if(chip){
+
+        input.value =
+          chip.dataset.prompt +
+          ' ';
+
+        input.focus();
+
+        input.dispatchEvent(
+          new Event('input')
+        );
+
+        return;
+
+      }
+
+
+      const excelBtn =
+        e.target.closest(
+          '.excel-download-btn'
+        );
+
+
+      if(excelBtn){
+
+        downloadExcelBlock(
+          excelBtn.dataset.xlsxId,
+          excelBtn
+        );
+
+        return;
+
+      }
+
+
+      const codeCopyBtn =
+        e.target.closest(
+          '.code-copy-btn'
+        );
+
+
+      if(codeCopyBtn){
+
+        const codeEl =
+          codeCopyBtn
+            .closest('.code-block')
+            .querySelector('code');
+
+
+        const label =
+          codeCopyBtn
+            .querySelector('span');
+
+
+        navigator.clipboard
+          .writeText(
+            codeEl.textContent
+          )
+          .then(() => {
+
+            codeCopyBtn.classList.add(
+              'copied'
+            );
+
+            const original =
+              label.textContent;
+
+            label.textContent =
+              'Disalin';
+
+
+            setTimeout(
+              () => {
+
+                codeCopyBtn.classList.remove(
+                  'copied'
+                );
+
+                label.textContent =
+                  original;
+
+              },
+              1400
+            );
+
+          });
+
+      }
+
+    }
+  );
+
+
+// =========================================================
+// SCROLL
+// =========================================================
+
+function isNearBottom(){
+
+  return (
+    messagesEl.scrollHeight -
+    messagesEl.scrollTop -
+    messagesEl.clientHeight
+  ) < 80;
+
+}
+
+
+messagesEl.addEventListener(
+  'scroll',
+  () => {
+
+    headerEl.classList.toggle(
+      'is-scrolled',
+      messagesEl.scrollTop > 4
+    );
+
+
+    scrollBtn.classList.toggle(
+      'visible',
+      !isNearBottom()
+    );
+
+  }
+);
+
+
+scrollBtn.addEventListener(
+  'click',
+  () => {
+
+    messagesEl.scrollTo({
+      top:messagesEl.scrollHeight,
+      behavior:'smooth'
+    });
+
+  }
+);
+
+
+// =========================================================
+// COPY TEXT
+// =========================================================
+
+function copyText(
+  text,
+  btn
+){
+
+  navigator.clipboard
+    .writeText(text)
+    .then(() => {
+
+      btn.textContent = '✓';
+
+      btn.classList.add(
+        'copied'
+      );
+
+
+      setTimeout(
+        () => {
+
+          btn.textContent = '⧉';
+
+          btn.classList.remove(
+            'copied'
+          );
+
+        },
+        1400
+      );
+
+    });
+
+}
+
+
+// =========================================================
+// TIME
+// =========================================================
+
+function timeNow(){
+
+  return new Date()
+    .toLocaleTimeString(
+      'id-ID',
+      {
+        hour:'2-digit',
+        minute:'2-digit'
+      }
+    );
+
+}
+
+
+// =========================================================
+// FORMAT BYTES
+// =========================================================
+
+function formatBytes(
+  bytes
+){
+
+  if(bytes < 1024)
+    return bytes + ' B';
+
+  if(bytes < 1024 * 1024)
+    return (
+      bytes / 1024
+    ).toFixed(0) + ' KB';
+
+  return (
+    bytes /
+    (1024 * 1024)
+  ).toFixed(1) + ' MB';
+
+}
+
+
+// =========================================================
+// EKSTRAK TEKS PDF (pdf.js)
+// =========================================================
+
+async function extractPdfText(arrayBuffer){
+
+  if(!window.pdfjsLib){
+    throw new Error('pdf.js belum termuat.');
+  }
+
+  const pdf =
+    await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+  let text = '';
+
+  for(let pageNum = 1; pageNum <= pdf.numPages; pageNum++){
+
+    const page = await pdf.getPage(pageNum);
+
+    const content = await page.getTextContent();
+
+    const pageText = content.items
+      .map(item => item.str)
+      .join(' ');
+
+    text += `\n--- Halaman ${pageNum} ---\n` + pageText;
+
+  }
+
+  return text.trim();
+
+}
+
+
+// =========================================================
+// UPLOAD
+// =========================================================
+
+attachBtn.addEventListener(
+  'click',
+  () =>
+    fileInput.click()
+);
+
+
+fileInput.addEventListener(
+  'change',
+  () => {
+
+    const file =
+      fileInput.files[0];
+
+    fileInput.value = '';
+
+    if(!file) return;
+
+
+    const isImage =
+      file.type.startsWith(
+        'image/'
+      );
+
+
+    const lowerName =
+      file.name.toLowerCase();
+
+
+    const isPdf =
+      lowerName.endsWith('.pdf') ||
+      file.type === 'application/pdf';
+
+
+    const isTextLike =
+      TEXTLIKE_EXT.some(
+        ext =>
+          lowerName.endsWith(ext)
+      ) ||
+      file.type.startsWith('text/') ||
+      file.type ===
+        'application/json';
+
+
+    if(
+      !isImage &&
+      !isTextLike &&
+      !isPdf
+    ){
+
+      alert(
+        'Jenis file ini belum didukung. Gunakan gambar (JPG/PNG/dll), PDF, atau file teks (.txt, .md, .csv, .json, .log).'
+      );
+
+      return;
+
+    }
+
+
+    if(
+      isImage &&
+      file.size >
+      MAX_IMAGE_BYTES
+    ){
+
+      alert(
+        'Gambar terlalu besar (maks ' +
+        formatBytes(
+          MAX_IMAGE_BYTES
+        ) +
+        ').'
+      );
+
+      return;
+
+    }
+
+
+    if(
+      isTextLike &&
+      file.size >
+      MAX_TEXT_BYTES
+    ){
+
+      alert(
+        'File terlalu besar (maks ' +
+        formatBytes(
+          MAX_TEXT_BYTES
+        ) +
+        ').'
+      );
+
+      return;
+
+    }
+
+
+    if(
+      isPdf &&
+      file.size >
+      MAX_PDF_BYTES
+    ){
+
+      alert(
+        'File PDF terlalu besar (maks ' +
+        formatBytes(
+          MAX_PDF_BYTES
+        ) +
+        ').'
+      );
+
+      return;
+
+    }
+
+
+    const reader =
+      new FileReader();
+
+
+    if(isImage){
+
+      reader.onload = () => {
+
+        pendingAttachment = {
+
+          kind:'image',
+
+          name:file.name,
+
+          size:file.size,
+
+          dataUrl:reader.result
+
+        };
+
+
+        showAttachmentPreview();
+
+      };
+
+
+      reader.onerror =
+        () =>
+          alert(
+            'Gagal membaca gambar.'
+          );
+
+
+      reader.readAsDataURL(
+        file
+      );
+
+    }else if(isPdf){
+
+      reader.onload = async () => {
+
+        try{
+
+          const rawText =
+            await extractPdfText(
+              reader.result
+            );
+
+          let text = rawText;
+
+          let truncated = false;
+
+
+          if(
+            !text ||
+            text.trim() === ''
+          ){
+
+            text =
+              '[Tidak ada teks yang bisa diekstrak dari PDF ini. Kemungkinan PDF berupa hasil scan/gambar tanpa lapisan teks.]';
+
+          }
+
+
+          if(
+            text.length >
+            MAX_TEXT_CHARS_IN_PROMPT
+          ){
+
+            text =
+              text.slice(
+                0,
+                MAX_TEXT_CHARS_IN_PROMPT
+              );
+
+            truncated = true;
+
+          }
+
+
+          pendingAttachment = {
+
+            kind:'text',
+
+            name:file.name,
+
+            size:file.size,
+
+            text:text,
+
+            truncated:truncated
+
+          };
+
+
+          showAttachmentPreview();
+
+        }catch(err){
+
+          console.error(
+            'Gagal membaca PDF:',
+            err
+          );
+
+          const notLoaded =
+            !window.pdfjsLib;
+
+          alert(
+            notLoaded
+              ? 'Fitur baca PDF belum siap (pdf.js gagal dimuat dari CDN). Coba refresh halaman, atau periksa koneksi/adblocker.'
+              : 'Gagal membaca isi PDF. Pastikan file tidak rusak atau terkunci password.'
+          );
+
+        }
+
+      };
+
+
+      reader.onerror =
+        () =>
+          alert(
+            'Gagal membaca file PDF.'
+          );
+
+
+      reader.readAsArrayBuffer(
+        file
+      );
+
+    }else{
+
+      reader.onload = () => {
+
+        let text =
+          reader.result;
+
+        let truncated =
+          false;
+
+
+        if(
+          text.length >
+          MAX_TEXT_CHARS_IN_PROMPT
+        ){
+
+          text =
+            text.slice(
+              0,
+              MAX_TEXT_CHARS_IN_PROMPT
+            );
+
+          truncated = true;
+
+        }
+
+
+        pendingAttachment = {
+
+          kind:'text',
+
+          name:file.name,
+
+          size:file.size,
+
+          text:text,
+
+          truncated:truncated
+
+        };
+
+
+        showAttachmentPreview();
+
+      };
+
+
+      reader.onerror =
+        () =>
+          alert(
+            'Gagal membaca file.'
+          );
+
+
+      reader.readAsText(
+        file
+      );
+
+    }
+
+  }
+);
+
+
+// =========================================================
+// ATTACHMENT PREVIEW
+// =========================================================
+
+function showAttachmentPreview(){
+
+  if(!pendingAttachment)
+    return;
+
+
+  attPreview.classList.add(
+    'visible'
+  );
+
+
+  attName.textContent =
+    pendingAttachment.name;
+
+
+  attSize.textContent =
+    formatBytes(
+      pendingAttachment.size
+    );
+
+
+  if(
+    pendingAttachment.kind ===
+    'image'
+  ){
+
+    attImgPreview.src =
+      pendingAttachment.dataUrl;
+
+    attImgPreview.style.display =
+      'block';
+
+    attFileIcon.style.display =
+      'none';
+
+  }else{
+
+    attImgPreview.style.display =
+      'none';
+
+    attFileIcon.style.display =
+      'flex';
+
+  }
+
+}
+
+
+function clearAttachment(){
+
+  pendingAttachment =
+    null;
+
+  attPreview.classList.remove(
+    'visible'
+  );
+
+  attImgPreview.src =
+    '';
+
+  attImgPreview.style.display =
+    'none';
+
+  attFileIcon.style.display =
+    'none';
+
+}
+
+
+attRemove.addEventListener(
+  'click',
+  clearAttachment
+);
+
+
+// =========================================================
+// ESCAPE HTML
+// =========================================================
+
+function escapeHtml(
+  str
+){
+
+  return str
+    .replace(
+      /&/g,
+      '&amp;'
+    )
+    .replace(
+      /</g,
+      '&lt;'
+    )
+    .replace(
+      />/g,
+      '&gt;'
+    );
+
+}
+
+
+// =========================================================
+// CODE COPY ICON
+// =========================================================
+
+const COPY_ICON_SVG =
+
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+
+  '<rect x="9" y="9" width="13" height="13" rx="2"/>' +
+
+  '<path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>' +
+
+  '</svg>';
+
+
+// =========================================================
+// EXCEL ICON
+// =========================================================
+
+const EXCEL_ICON_SVG =
+
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+
+  '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>' +
+
+  '<path d="M14 2v6h6"/>' +
+
+  '<path d="M9.5 12.5l5 5M14.5 12.5l-5 5"/>' +
+
+  '</svg>';
+
+
+// =========================================================
+// EXCEL BLOCK REGISTRY
+// Menyimpan data CSV mentah per blok "excel" supaya bisa
+// diambil lagi saat tombol download diklik, tanpa perlu
+// menaruh data mentah di atribut HTML.
+// =========================================================
+
+let excelBlockCounter = 0;
+
+const excelBlockRegistry = {};
+
+
+function buildExcelBlockHtml(
+  csvCode
+){
+
+  const blockId =
+    'xlsx-' +
+    Date.now() +
+    '-' +
+    (excelBlockCounter++);
+
+
+  excelBlockRegistry[blockId] =
+    csvCode;
+
+
+  return (
+
+    '<div class="excel-block">' +
+
+      '<div class="excel-block-icon">' +
+
+        EXCEL_ICON_SVG +
+
+      '</div>' +
+
+      '<div class="excel-block-info">' +
+
+        '<div class="excel-block-title">Data Excel siap diunduh</div>' +
+
+        '<div class="excel-block-sub">Klik untuk mengunduh sebagai file .xlsx</div>' +
+
+      '</div>' +
+
+      '<button class="excel-download-btn" type="button" data-xlsx-id="' +
+
+        blockId +
+
+      '">Unduh Excel</button>' +
+
+    '</div>'
+
+  );
+
+}
+
+
+// =========================================================
+// TRIGGER DOWNLOAD EXCEL
+// =========================================================
+
+function downloadExcelBlock(
+  blockId,
+  btnEl
+){
+
+  const csvCode =
+    excelBlockRegistry[blockId];
+
+
+  if(!window.XLSX){
+
+    alert(
+      'Library Excel (SheetJS) belum termuat. Coba refresh halaman lalu coba lagi.'
+    );
+
+    return;
+
+  }
+
+
+  if(
+    typeof csvCode !== 'string' ||
+    csvCode.trim() === ''
+  ){
+
+    alert(
+      'Data untuk file Excel ini tidak ditemukan. Coba minta AI generate ulang.'
+    );
+
+    return;
+
+  }
+
+
+  try{
+
+    const workbook =
+      XLSX.read(
+        csvCode,
+        { type:'string' }
+      );
+
+    const filename =
+      'tanya-data-' +
+      Date.now() +
+      '.xlsx';
+
+    XLSX.writeFile(
+      workbook,
+      filename
+    );
+
+  }catch(err){
+
+    console.error(
+      'Gagal membuat file Excel:',
+      err
+    );
+
+    if(btnEl){
+
+      btnEl.classList.add(
+        'error'
+      );
+
+      btnEl.textContent =
+        'Gagal, coba lagi';
+
+
+      setTimeout(
+        () => {
+
+          btnEl.classList.remove(
+            'error'
+          );
+
+          btnEl.textContent =
+            'Unduh Excel';
+
+        },
+        2200
+      );
+
+    }else{
+
+      alert(
+        'Gagal membuat file Excel dari data ini.'
+      );
+
+    }
+
+  }
+
+}
+
+
+// =========================================================
+// CODE BLOCK
+// =========================================================
+
+function buildCodeBlockHtml(
+  lang,
+  code
+){
+
+  const label =
+    lang
+      ? lang.toLowerCase()
+      : 'teks';
+
+  // Nama bahasa untuk highlight.js harus berupa identifier
+  // yang valid (huruf/angka/+/-/#), fallback ke "plaintext"
+  // kalau AI tidak menyertakan bahasa (mis. blok ``` polos).
+  const hljsLang =
+    lang && /^[a-zA-Z0-9_+#.-]+$/.test(lang)
+      ? lang.toLowerCase()
+      : 'plaintext';
+
+
+  return (
+
+    '<div class="code-block">' +
+
+      '<div class="code-block-header">' +
+
+        '<span class="code-lang">' +
+
+          escapeHtml(label) +
+
+        '</span>' +
+
+        '<button class="code-copy-btn" type="button">' +
+
+          COPY_ICON_SVG +
+
+          '<span>Salin</span>' +
+
+        '</button>' +
+
+      '</div>' +
+
+      '<pre><code class="hljs language-' +
+
+        escapeHtml(hljsLang) +
+
+        '">' +
+
+        code +
+
+      '</code></pre>' +
+
+    '</div>'
+
+  );
+
+}
+
+
+// =========================================================
+// SYNTAX HIGHLIGHTING (VS CODE STYLE)
+// =========================================================
+
+function highlightCodeBlocks(container){
+
+  if(
+    !container ||
+    typeof hljs === 'undefined'
+  ){
+    return;
+  }
+
+  const blocks =
+    container.querySelectorAll(
+      'pre code:not([data-highlighted])'
+    );
+
+  blocks.forEach(function(block){
+
+    try{
+
+      hljs.highlightElement(block);
+
+    }catch(err){
+
+      console.error(
+        'Gagal menerapkan syntax highlighting:',
+        err
+      );
+
+    }
+
+  });
+
+}
+
+
+// =========================================================
+// MARKDOWN RENDERER
+// =========================================================
+
+function renderMarkdown(raw){
+
+  if(
+    raw === null ||
+    raw === undefined
+  ){
+    return '';
+  }
+
+  let source =
+    String(raw)
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+    
+    // =======================================================
+    // NORMALIZE HTML LINE BREAK DARI AI
+    // =======================================================
+    
+    // AI kadang mengirim <br>, <br/>, atau <br />
+    // Ubah menjadi newline agar tidak tampil sebagai teks.
+    source =
+    source.replace(
+      /<br\s*\/?>/gi,
+      '\n'
+    );
+
+  // =======================================================
+  // NORMALIZE AI MARKDOWN
+  // =======================================================
+
+  // AI kadang menghasilkan:
+  // \## Judul
+  // \| A | B |
+  //
+  // Kembalikan ke Markdown normal.
+
+  source =
+    source.replace(
+      /^\\(#{1,6})\s/gm,
+      '$1 '
+    );
+
+  source =
+    source.replace(
+      /^\\\|/gm,
+      '|'
+    );
+
+  // Hanya perbaiki escaped pipe yang memang
+  // terlihat seperti tabel.
+  const sourceLines =
+    source.split('\n');
+
+  let inTable = false;
+
+  source =
+    sourceLines
+      .map(line => {
+
+        const trimmed =
+          line.trim();
+
+        if(
+          trimmed.startsWith('|')
+        ){
+          inTable = true;
+
+          return line.replace(
+            /\\\|/g,
+            '|'
+          );
+        }
+
+        if(
+          inTable &&
+          /^\s*\|?[\s:-]+(\|[\s:-]+)+\|?\s*$/
+            .test(trimmed)
+        ){
+          return line.replace(
+            /\\\|/g,
+            '|'
+          );
+        }
+
+        if(
+          trimmed === ''
+        ){
+          inTable = false;
+        }
+
+        return line;
+      })
+      .join('\n');
+
+
+  // =======================================================
+  // CODE BLOCK EXTRACTION
+  // =======================================================
+
+  const codeBlocks = [];
+
+  // Pagar pembuka/penutup HARUS berdiri sendiri di satu baris
+  // (boleh diawali spasi/tab, dan setelah bahasa boleh ada
+  // spasi trailing) — ini mencegah tanda ``` yang nyasar di
+  // tengah kalimat/komentar ikut dianggap sebagai fence, yang
+  // sebelumnya bisa merusak pairing semua blok kode sesudahnya.
+  source =
+    source.replace(
+      /^[ \t]*```([a-zA-Z0-9_+#.-]*)[ \t]*\r?\n([\s\S]*?)^[ \t]*```[ \t]*$/gm,
+
+      (
+        match,
+        lang,
+        code
+      ) => {
+
+        const index =
+          codeBlocks.length;
+
+        codeBlocks.push({
+          lang:
+            (lang || '')
+              .trim()
+              .toLowerCase(),
+
+          code:
+            code.replace(
+              /\n$/,
+              ''
+            )
+        });
+
+        return (
+          '\n' +
+          '\u0000CODEBLOCK' +
+          index +
+          '\u0000' +
+          '\n'
+        );
+      }
+    );
+
+
+  // =======================================================
+  // FALLBACK: PAGAR PEMBUKA TANPA PENUTUP
+  // =======================================================
+  // Kalau setelah ekstraksi di atas masih ada baris ``` yang
+  // "nyasar" (pembuka tanpa pasangan penutup — misal AI lupa
+  // menutup, atau responsnya kepotong), jangan biarkan sisa
+  // teksnya tampil plain. Anggap semua sisa teks setelah
+  // pagar itu sebagai satu blok kode yang belum selesai.
+
+  source =
+    source.replace(
+      /^[ \t]*```([a-zA-Z0-9_+#.-]*)[ \t]*\r?\n([\s\S]*)$/m,
+
+      (
+        match,
+        lang,
+        code
+      ) => {
+
+        const index =
+          codeBlocks.length;
+
+        codeBlocks.push({
+          lang:
+            (lang || '')
+              .trim()
+              .toLowerCase(),
+
+          code:
+            code.replace(
+              /\n$/,
+              ''
+            )
+        });
+
+        return (
+          '\n' +
+          '\u0000CODEBLOCK' +
+          index +
+          '\u0000' +
+          '\n'
+        );
+      }
+    );
+
+
+  // =======================================================
+  // ESCAPE HTML
+  // =======================================================
+
+  let text =
+    escapeHtml(source);
+
+
+  // =======================================================
+  // INLINE CODE
+  // =======================================================
+
+  text =
+    text.replace(
+      /`([^`\n]+)`/g,
+      '<code>$1</code>'
+    );
+
+
+  // =======================================================
+  // BOLD
+  // =======================================================
+
+  text =
+    text.replace(
+      /\*\*([^*\n]+)\*\*/g,
+      '<strong>$1</strong>'
+    );
+
+
+  // =======================================================
+  // ITALIC
+  // =======================================================
+
+  text =
+    text.replace(
+      /(^|[^\*])\*([^*\n]+)\*(?!\*)/g,
+      '$1<em>$2</em>'
+    );
+
+
+  // =======================================================
+  // STRIKETHROUGH
+  // =======================================================
+
+  text =
+    text.replace(
+      /~~([^~\n]+)~~/g,
+      '<del>$1</del>'
+    );
+
+
+  const lines =
+    text.split('\n');
+
+
+  let html = '';
+
+  let listType =
+    null;
+
+
+  // =======================================================
+  // HELPERS
+  // =======================================================
+
+  function closeList(){
+
+    if(!listType){
+      return;
+    }
+
+    html +=
+      listType === 'ol'
+        ? '</ol>'
+        : '</ul>';
+
+    listType =
+      null;
+  }
+
+
+  function isTableSeparator(line){
+
+    return /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/
+      .test(line);
+  }
+
+
+  function parseTableRow(line){
+
+    let value =
+      line.trim();
+
+    if(
+      value.startsWith('|')
+    ){
+      value =
+        value.slice(1);
+    }
+
+    if(
+      value.endsWith('|')
+    ){
+      value =
+        value.slice(
+          0,
+          -1
+        );
+    }
+
+    return value
+      .split('|')
+      .map(
+        cell =>
+          cell.trim()
+      );
+  }
+
+
+  function renderTable(
+    startIndex
+  ){
+
+    const header =
+      parseTableRow(
+        lines[startIndex]
+      );
+
+    const separator =
+      lines[startIndex + 1];
+
+    if(
+      !header.length ||
+      !isTableSeparator(
+        separator
+      )
+    ){
+      return null;
+    }
+
+    let end =
+      startIndex + 2;
+
+    const rows = [];
+
+    while(
+      end < lines.length
+    ){
+
+      const line =
+        lines[end];
+
+      if(
+        !line.trim() ||
+        !line.includes('|')
+      ){
+        break;
+      }
+
+      rows.push(
+        parseTableRow(line)
+      );
+
+      end++;
+    }
+
+    let table =
+      '<div class="md-table-wrap">' +
+      '<table>' +
+      '<thead>' +
+      '<tr>';
+
+    header.forEach(
+      cell => {
+
+        table +=
+          '<th>' +
+          cell +
+          '</th>';
+      }
+    );
+
+    table +=
+      '</tr>' +
+      '</thead>' +
+      '<tbody>';
+
+
+    rows.forEach(
+      row => {
+
+        table +=
+          '<tr>';
+
+        for(
+          let i = 0;
+          i < header.length;
+          i++
+        ){
+
+          table +=
+            '<td>' +
+            (row[i] || '') +
+            '</td>';
+        }
+
+        table +=
+          '</tr>';
+      }
+    );
+
+
+    table +=
+      '</tbody>' +
+      '</table>' +
+      '</div>';
+
+
+    return {
+      html: table,
+      end
+    };
+  }
+
+
+  // =======================================================
+  // MAIN PARSER
+  // =======================================================
+
+  for(
+    let i = 0;
+    i < lines.length;
+    i++
+  ){
+
+    const line =
+      lines[i];
+
+    const trimmed =
+      line.trim();
+
+
+    // -----------------------------------------------------
+    // EMPTY LINE
+    // -----------------------------------------------------
+
+    if(
+      trimmed === ''
+    ){
+
+      closeList();
+
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // CODE BLOCK
+    // -----------------------------------------------------
+
+    const codeMatch =
+      trimmed.match(
+        /^\u0000CODEBLOCK(\d+)\u0000$/
+      );
+
+    if(codeMatch){
+
+      closeList();
+
+      const block =
+        codeBlocks[
+          Number(
+            codeMatch[1]
+          )
+        ];
+
+      if(
+        block &&
+        block.lang === 'excel'
+      ){
+
+        html +=
+          buildExcelBlockHtml(
+            block.code
+          );
+
+      }else if(block){
+
+        html +=
+          buildCodeBlockHtml(
+            block.lang,
+            escapeHtml(
+              block.code
+            )
+          );
+      }
+
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // HEADING
+    // -----------------------------------------------------
+
+    const heading =
+      trimmed.match(
+        /^(#{1,6})\s+(.+)$/
+      );
+
+    if(heading){
+
+      closeList();
+
+      const level =
+        heading[1].length;
+
+      const content =
+        heading[2]
+          .trim();
+
+      html +=
+        `<h${level}>${content}</h${level}>`;
+
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // HORIZONTAL RULE
+    // -----------------------------------------------------
+
+    if(
+      /^(\*{3,}|-{3,}|_{3,})$/
+        .test(trimmed)
+    ){
+
+      closeList();
+
+      html +=
+        '<hr>';
+
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // TABLE
+    // -----------------------------------------------------
+
+    if(
+      line.includes('|') &&
+      i + 1 < lines.length &&
+      isTableSeparator(
+        lines[i + 1]
+      )
+    ){
+
+      closeList();
+
+      const table =
+        renderTable(i);
+
+      if(table){
+
+        html +=
+          table.html;
+
+        i =
+          table.end - 1;
+
+        continue;
+      }
+    }
+
+
+    // -----------------------------------------------------
+    // BULLET
+    // -----------------------------------------------------
+
+    const bullet =
+      trimmed.match(
+        /^[-*+]\s+(.+)$/
+      );
+
+    if(bullet){
+
+      if(
+        listType !== 'ul'
+      ){
+
+        closeList();
+
+        html +=
+          '<ul>';
+
+        listType =
+          'ul';
+      }
+
+      html +=
+        '<li>' +
+        bullet[1] +
+        '</li>';
+
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // NUMBERED LIST
+    // -----------------------------------------------------
+
+    const numbered =
+      trimmed.match(
+        /^\d+[.)]\s+(.+)$/
+      );
+
+    if(numbered){
+
+      if(
+        listType !== 'ol'
+      ){
+
+        closeList();
+
+        html +=
+          '<ol>';
+
+        listType =
+          'ol';
+      }
+
+      html +=
+        '<li>' +
+        numbered[1] +
+        '</li>';
+
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // BLOCKQUOTE
+    // -----------------------------------------------------
+
+    const quote =
+      trimmed.match(
+        /^>\s?(.*)$/
+      );
+
+    if(quote){
+
+      closeList();
+
+      html +=
+        '<blockquote>' +
+        quote[1] +
+        '</blockquote>';
+
+      continue;
+    }
+
+
+    // -----------------------------------------------------
+    // NORMAL PARAGRAPH
+    // -----------------------------------------------------
+
+    closeList();
+
+    html +=
+      '<p>' +
+      line +
+      '</p>';
+  }
+
+
+  closeList();
+
+
+  // =======================================================
+  // RESTORE LATEX
+  // =======================================================
+
+  html =
+    html.replace(
+      /\$\$([\s\S]*?)\$\$/g,
+      (
+        match,
+        formula
+      ) => {
+
+        return (
+          '<div class="math-block">' +
+          '<code>' +
+          escapeHtml(
+            formula.trim()
+          ) +
+          '</code>' +
+          '</div>'
+        );
+      }
+    );
+
+
+  html =
+    html.replace(
+      /\\\[([\s\S]*?)\\\]/g,
+      (
+        match,
+        formula
+      ) => {
+
+        return (
+          '<div class="math-block">' +
+          '<code>' +
+          escapeHtml(
+            formula.trim()
+          ) +
+          '</code>' +
+          '</div>'
+        );
+      }
+    );
+
+
+  return (
+    html ||
+    '<p></p>'
+  );
+}
+
+
+
+
+// =========================================================
+// ADD MESSAGE ROW
+// =========================================================
+
+function addRow(
+  role,
+  attachment,
+  timestamp
+){
+
+  const empty =
+    document.getElementById(
+      'empty-state'
+    );
+
+
+  if(empty)
+    empty.remove();
+
+
+  const row =
+    document.createElement(
+      'div'
+    );
+
+
+  row.className =
+    'row ' + role;
+
+
+  const avatar =
+    document.createElement(
+      'div'
+    );
+
+
+  avatar.className =
+    'avatar ' + role;
+
+
+  if(
+    role === 'user' &&
+    userProfile
+  ){
+
+    const img =
+      document.createElement(
+        'img'
+      );
+
+    img.src =
+      userProfile.picture ||
+      DUMMY_AVATAR;
+
+    img.alt = '';
+
+    avatar.appendChild(
+      img
+    );
+
+  }else if(
+    role === 'user'
+  ){
+
+    avatar.textContent =
+      'K';
+
+  }else{
+
+    avatar.textContent =
+      'T';
+
+  }
+
+
+  const col =
+    document.createElement(
+      'div'
+    );
+
+
+  col.className =
+    'bubble-col';
+
+
+  const wrap =
+    document.createElement(
+      'div'
+    );
+
+
+  wrap.className =
+    'bubble-wrap';
+
+
+  const bubble =
+    document.createElement(
+      'div'
+    );
+
+
+  bubble.className =
+    'bubble';
+
+
+  // IMAGE
+
+  if(
+    attachment &&
+    attachment.kind === 'image'
+  ){
+
+    const img =
+      document.createElement(
+        'img'
+      );
+
+
+    img.className =
+      'msg-image';
+
+
+    img.src =
+      attachment.dataUrl;
+
+
+    img.alt =
+      attachment.name;
+
+
+    img.title =
+      attachment.name;
+
+
+    bubble.appendChild(
+      img
+    );
+
+  }
+
+
+  // TEXT FILE
+
+  else if(
+    attachment &&
+    attachment.kind === 'text'
+  ){
+
+    const chip =
+      document.createElement(
+        'div'
+      );
+
+
+    chip.className =
+      'msg-file-chip';
+
+
+    chip.innerHTML =
+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+
+      '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>' +
+
+      '<path d="M14 2v6h6"/>' +
+
+      '</svg>' +
+
+      '<span></span>';
+
+
+    chip
+      .querySelector('span')
+      .textContent =
+      attachment.name;
+
+
+    bubble.appendChild(
+      chip
+    );
+
+  }
+
+
+  wrap.appendChild(
+    bubble
+  );
+
+
+  if(role === 'ai'){
+
+    const copyBtn =
+      document.createElement(
+        'button'
+      );
+
+
+    copyBtn.className =
+      'copy-btn';
+
+
+    copyBtn.textContent =
+      '⧉';
+
+
+    copyBtn.title =
+      'Salin pesan';
+
+
+    copyBtn.addEventListener(
+      'click',
+      () =>
+        copyText(
+          bubble.textContent,
+          copyBtn
+        )
+    );
+
+
+    wrap.appendChild(
+      copyBtn
+    );
+
+  }
+
+
+  const meta =
+    document.createElement(
+      'div'
+    );
+
+
+  meta.className =
+    'meta';
+
+
+  meta.textContent =
+    timestamp ||
+    timeNow();
+
+
+  col.appendChild(
+    wrap
+  );
+
+
+  col.appendChild(
+    meta
+  );
+
+
+  row.appendChild(
+    avatar
+  );
+
+
+  row.appendChild(
+    col
+  );
+
+
+  messagesEl.appendChild(
+    row
+  );
+
+
+  messagesEl.scrollTop =
+    messagesEl.scrollHeight;
+
+
+  return bubble;
+
+}
+
+
+// =========================================================
+// LOAD CHAT HISTORY
+// =========================================================
+
+async function loadChatHistory(conversationId){
+  const idToken = localStorage.getItem('id_token');
+  if(!idToken ||!conversationId) return;
+
+  try{
+    const response = await fetch('/api/memories?conversationId=' + encodeURIComponent(conversationId), {
+      headers:{ 'Authorization': 'Bearer ' + idToken }
+    });
+    if(!response.ok) return;
+
+    const data = await response.json();
+    const chatHistory = Array.isArray(data.chatHistory)? data.chatHistory : [];
+    if(chatHistory.length === 0) return;
+
+    const empty = document.getElementById('empty-state');
+    if(empty) empty.remove();
+
+    // 1. MATIKAN SMOOTH BIAR INSTANT KE BAWAH
+    messagesEl.style.scrollBehavior = 'auto';
+
+    // 2. RENDER SEMUA DENGAN FADE
+    for(let i = 0; i < chatHistory.length; i++){
+      const msg = chatHistory[i];
+      const role = msg.role === 'user'? 'user' : 'ai';
+      const ts = msg.created_at? new Date(msg.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}) : undefined;
+      const bubble = addRow(role, null, ts);
+
+      // FADE IN SMOOTH TAPI GAK NGARUH KE POSISI SCROLL
+      bubble.style.opacity = '0';
+      bubble.animate([
+        { opacity: 0, transform: 'translateY(8px)' },
+        { opacity: 1, transform: 'translateY(0)' }
+      ], {
+        duration: 400,
+        delay: i * 40, // delay pendek biar smooth
+        easing: 'ease-out',
+        fill: 'forwards'
+      });
+
+      if(role === 'ai'){
+        bubble.innerHTML = renderMarkdown(msg.content);
+        highlightCodeBlocks(bubble);
+      }else{
+        const span = document.createElement('span');
+        span.textContent = msg.content;
+        bubble.appendChild(span);
+      }
+      history.push({ role: msg.role === 'user'? 'user' : 'assistant', content: msg.content });
+    }
+
+    // 3. INI KUNCINYA: LANGSUNG TEMBAK BAWAH DULU, BARU FADE JALAN
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    requestAnimationFrame(() => {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
+
+  }catch(e){
+    console.error('Gagal memuat riwayat percakapan:', e);
+  } finally {
+    setTimeout(() => {
+      messagesEl.style.scrollBehavior = 'smooth';
+    }, 500);
+  }
+}
+
+// =========================================================
+// SILENT REAUTH
+// =========================================================
+
+function trySilentReauthThenRetry(
+  onSuccess,
+  onFail
+){
+
+  let settled = false;
+
+
+  google.accounts.id.initialize({
+
+    client_id:
+      GOOGLE_CLIENT_ID,
+
+    auto_select: false,
+
+    callback:
+      (response) => {
+
+        settled = true;
+
+        handleCredentialResponse(
+          response
+        );
+
+        onSuccess();
+
+      }
+
+  });
+
+
+  google.accounts.id.prompt(
+    (notification) => {
+
+      if(
+        !settled &&
+        (
+          notification.isNotDisplayed() ||
+          notification.isSkippedMoment()
+        )
+      ){
+
+        onFail();
+
+      }
+
+    }
+  );
+
+
+  setTimeout(
+    () => {
+
+      if(!settled)
+        onFail();
+
+    },
+    3000
+  );
+
+}
+
+
+// =========================================================
+// TRIM HISTORY SEBELUM DIKIRIM KE SERVER (HEMAT TOKEN)
+// =========================================================
+//
+// `history` lokal terus bertambah selama sesi chat berjalan, dan
+// sebelumnya SELURUH isinya (termasuk isi dokumen mentah & data
+// gambar base64 dari pesan-pesan lama) dikirim ulang ke /api/chat
+// di SETIAP pesan baru. Ini boros bandwidth & token Groq, karena
+// isi dokumen/gambar yang sudah pernah dianalisis ikut terkirim
+// ulang berkali-kali di setiap giliran chat berikutnya.
+//
+// Fungsi ini TIDAK mengubah `history` asli (supaya scrollback di
+// UI dan apa yang tersimpan secara lokal tetap utuh) — ia hanya
+// membuat salinan yang dipangkas untuk dikirim ke server. Backend
+// (/api/chat) juga sudah punya safety net serupa, tapi memangkas
+// di sini mengurangi ukuran request itu sendiri sebelum terkirim.
+
+const FRONTEND_MAX_HISTORY_FOR_SEND = 16;
+const FRONTEND_MAX_DOCS_FULL = 1;
+const FRONTEND_MAX_IMAGE_MSGS_FULL = 1;
+
+
+function historyMessageHasImage(msg){
+
+  return (
+    Array.isArray(msg.content) &&
+    msg.content.some(
+      p => p && p.type === 'image_url'
+    )
+  );
+
+}
+
+
+function historyMessageHasDocument(msg){
+
+  return (
+    typeof msg.content === 'string' &&
+    (
+      msg.content.includes('[Isi file') ||
+      msg.content.includes('[File "')
+    )
+  );
+
+}
+
+
+function trimHistoryForSend(
+  fullHistory
+){
+
+  const imageIdx = [];
+
+  const docIdx = [];
+
+
+  fullHistory.forEach(
+    (m, i) => {
+
+      if(
+        historyMessageHasImage(m)
+      ){
+        imageIdx.push(i);
+      }
+
+
+      if(
+        historyMessageHasDocument(m)
+      ){
+        docIdx.push(i);
+      }
+
+    }
+  );
+
+
+  const imageStrip =
+    new Set(
+      imageIdx.slice(
+        0,
+        Math.max(
+          0,
+          imageIdx.length -
+          FRONTEND_MAX_IMAGE_MSGS_FULL
+        )
+      )
+    );
+
+
+  const docStrip =
+    new Set(
+      docIdx.slice(
+        0,
+        Math.max(
+          0,
+          docIdx.length -
+          FRONTEND_MAX_DOCS_FULL
+        )
+      )
+    );
+
+
+  let trimmed =
+    fullHistory.map(
+      (m, i) => {
+
+        if(
+          imageStrip.has(i)
+        ){
+
+          const textPart =
+            Array.isArray(m.content)
+              ? m.content.find(
+                  p => p.type === 'text'
+                )
+              : null;
+
+
+          const label =
+            (
+              textPart &&
+              textPart.text
+            ) ||
+            '(Lihat gambar terlampir)';
+
+
+          return {
+
+            role:
+              m.role,
+
+            content:
+              label +
+              '\n\n[Catatan: gambar pada pesan ini sudah pernah ' +
+              'dianalisis sebelumnya di percakapan ini. Data gambar ' +
+              'tidak dikirim ulang untuk menghemat token.]'
+
+          };
+
+        }
+
+
+        if(
+          docStrip.has(i)
+        ){
+
+          const match =
+            m.content.match(
+              /\[Isi file "([^"]+)"\]/i
+            ) ||
+            m.content.match(
+              /\[File "([^"]+)"\]/i
+            );
+
+
+          const fileName =
+            match
+              ? match[1]
+              : 'dokumen';
+
+
+          return {
+
+            role:
+              m.role,
+
+            content:
+              `[Dokumen "${fileName}" sudah pernah diupload dan ` +
+              `dianalisis sebelumnya di percakapan ini. Isi ` +
+              `lengkapnya tidak dikirim ulang untuk menghemat ` +
+              `token. Jika perlu detail dari dokumen ini lagi, ` +
+              `minta user upload ulang.]`
+
+          };
+
+        }
+
+
+        return m;
+
+      }
+    );
+
+
+  if(
+    trimmed.length >
+    FRONTEND_MAX_HISTORY_FOR_SEND
+  ){
+
+    trimmed =
+      trimmed.slice(
+        trimmed.length -
+        FRONTEND_MAX_HISTORY_FOR_SEND
+      );
+
+  }
+
+
+  return trimmed;
+
+}
+
+// =========================================================
+// GENERATE IMAGE
+// =========================================================
+
+function isImageGenerationRequest(text) {
+
+  const t = text.toLowerCase().trim();
+
+  return (
+    t.startsWith('buatkan gambar') ||
+    t.startsWith('buat gambar') ||
+    t.startsWith('generate gambar') ||
+    t.startsWith('hasilkan gambar') ||
+    t.startsWith('bikin gambar') ||
+    t.startsWith('buatkan anime') ||
+    t.startsWith('buat anime') ||
+    t.startsWith('generate anime') ||
+    t.startsWith('bikin anime') ||
+    t.includes('buatkan ilustrasi') ||
+    t.includes('buat ilustrasi') ||
+    t.includes('gambar anime') ||
+    t.includes('karakter anime')
+  );
+
+}
+
+
+async function generateImage(prompt) {
+
+  const idToken =
+    localStorage.getItem('id_token');
+
+  if (!idToken) {
+    throw new Error('Sesi login sudah habis.');
+  }
+
+  const response =
+    await fetch('/api/generate-image', {
+      method: 'POST',
+
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + idToken
+      },
+
+      body: JSON.stringify({
+        prompt: prompt
+      })
+    });
+
+  const data =
+    await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+
+    throw new Error(
+      data?.error ||
+      'Gagal membuat gambar.'
+    );
+
+  }
+
+  if (!data.image) {
+    throw new Error(
+      'Server tidak mengembalikan gambar.'
+    );
+  }
+
+  return data.image;
+
+}
+
+async function sendImageGeneration(prompt) {
+
+  const idToken =
+    localStorage.getItem('id_token');
+
+  if (!idToken) {
+
+    alert(
+      'Sesi login sudah habis. Silakan login kembali.'
+    );
+
+    return;
+
+  }
+
+  input.value = '';
+  updateSendButton();
+
+  input.style.height = 'auto';
+
+  sendBtn.disabled = true;
+
+
+  // Tampilkan pesan user
+  addRow(
+    'user',
+    null
+  ).appendChild(
+
+    Object.assign(
+      document.createElement('span'),
+      {
+        textContent: prompt
+      }
+    )
+
+  );
+
+
+  // Bubble AI
+  const aiBubble =
+    addRow('ai');
+
+
+  aiBubble.innerHTML =
+    '<span class="typing-dots">' +
+      '<span></span>' +
+      '<span></span>' +
+      '<span></span>' +
+    '</span>';
+
+
+  try {
+
+    const image =
+      await generateImage(prompt);
+
+
+    aiBubble.innerHTML = '';
+
+
+    const img =
+      document.createElement('img');
+
+
+    img.className =
+      'msg-image';
+
+
+    img.src =
+      image;
+
+
+    img.alt =
+      prompt;
+
+
+    img.style.maxWidth =
+      '100%';
+
+
+    img.style.borderRadius =
+      '14px';
+
+
+    aiBubble.appendChild(
+      img
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      'Generate image error:',
+      error
+    );
+
+
+    aiBubble.textContent =
+      error.message ||
+      'Gagal membuat gambar.';
+
+
+  } finally {
+
+    sendBtn.disabled = false;
+
+    input.focus();
+
+  }
+
+}
+
+
+// function percakapan ai 2 arah
+// =========================================================
+// START VOICE - GROQ WHISPER + AI + SPEECH
+// =========================================================
+
+let voiceRecorder = null;
+let voiceStream = null;
+let voiceChunks = [];
+let voiceRecording = false;
+let voiceProcessing = false;
+let aiSpeaking = false;
+
+
+// =========================================================
+// START / STOP RECORDING
+// =========================================================
+
+async function toggleStartVoice(){
+
+  if(voiceProcessing){
+    return;
+  }
+
+  // Kalau sedang merekam → STOP
+  if(voiceRecording){
+    stopStartVoice();
+    return;
+  }
+
+  const idToken =
+    localStorage.getItem('id_token');
+
+  if(!idToken){
+    alert(
+      'Sesi login sudah habis. Silakan login ulang dengan Google.'
+    );
+    return;
+  }
+
+  if(
+    !navigator.mediaDevices ||
+    !navigator.mediaDevices.getUserMedia
+  ){
+    alert(
+      'Browser tidak mendukung akses microphone.'
+    );
+    return;
+  }
+
+  try{
+
+    voiceStream =
+      await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+    voiceChunks = [];
+
+    let mimeType = '';
+
+    if(
+      MediaRecorder.isTypeSupported(
+        'audio/webm;codecs=opus'
+      )
+    ){
+      mimeType =
+        'audio/webm;codecs=opus';
+    }
+    else if(
+      MediaRecorder.isTypeSupported(
+        'audio/webm'
+      )
+    ){
+      mimeType =
+        'audio/webm';
+    }
+    else if(
+      MediaRecorder.isTypeSupported(
+        'audio/ogg;codecs=opus'
+      )
+    ){
+      mimeType =
+        'audio/ogg;codecs=opus';
+    }
+
+    voiceRecorder =
+      mimeType
+        ? new MediaRecorder(
+            voiceStream,
+            { mimeType }
+          )
+        : new MediaRecorder(
+            voiceStream
+          );
+
+
+    // =====================================================
+    // DATA AUDIO
+    // =====================================================
+
+    voiceRecorder.ondataavailable =
+      (event) => {
+
+        if(
+          event.data &&
+          event.data.size > 0
+        ){
+          voiceChunks.push(
+            event.data
+          );
+        }
+
+      };
+
+
+    // =====================================================
+    // RECORDING SELESAI
+    // =====================================================
+
+    voiceRecorder.onstop =
+      async () => {
+
+        try{
+
+          const actualMime =
+            voiceRecorder.mimeType ||
+            mimeType ||
+            'audio/webm';
+
+          const audioBlob =
+            new Blob(
+              voiceChunks,
+              {
+                type: actualMime
+              }
+            );
+
+          // Matikan microphone
+          if(voiceStream){
+
+            voiceStream
+              .getTracks()
+              .forEach(
+                track => track.stop()
+              );
+
+          }
+
+          voiceStream = null;
+          voiceRecorder = null;
+          voiceChunks = [];
+
+          await processVoiceAudio(
+            audioBlob
+          );
+
+        }catch(error){
+
+          console.error(
+            'Voice processing error:',
+            error
+          );
+
+          resetVoiceButton();
+
+          alert(
+            'Gagal memproses suara.'
+          );
+
+        }
+
+      };
+
+
+    voiceRecorder.start();
+
+    voiceRecording = true;
+
+    startVoiceBtn.classList.add(
+      'recording'
+    );
+
+    startVoiceBtn.title =
+      'Stop Voice';
+
+    startVoiceBtn.setAttribute(
+      'aria-label',
+      'Stop Voice'
+    );
+
+    console.log(
+      'Voice recording started.'
+    );
+
+  }catch(error){
+
+    console.error(
+      'Microphone error:',
+      error
+    );
+
+    if(
+      error.name ===
+      'NotAllowedError'
+    ){
+
+      alert(
+        'Akses microphone ditolak. Izinkan microphone pada browser.'
+      );
+
+    }else{
+
+      alert(
+        'Tidak dapat mengakses microphone.'
+      );
+
+    }
+
+  }
+
+}
+
+const startVoiceDefaultIcon =
+  startVoiceBtn ? startVoiceBtn.innerHTML : '';
+
+function setAIVoiceButtonSpeaking(active) {
+
+  if (!startVoiceBtn) return;
+
+  aiSpeaking = active;
+
+  if (active) {
+
+    startVoiceBtn.style.display = 'flex';
+
+    startVoiceBtn.innerHTML = `
+      <svg
+        viewBox="0 0 24 24"
+        width="20"
+        height="20"
+        fill="currentColor"
+        aria-hidden="true">
+        <rect x="7" y="7" width="10" height="10" rx="2"></rect>
+      </svg>
+    `;
+
+    startVoiceBtn.classList.add('speaking');
+
+    startVoiceBtn.title = 'Stop AI Voice';
+
+    startVoiceBtn.setAttribute(
+      'aria-label',
+      'Stop AI Voice'
+    );
+
+  } else {
+
+    startVoiceBtn.innerHTML =
+      startVoiceDefaultIcon;
+
+    startVoiceBtn.classList.remove(
+      'speaking'
+    );
+
+    startVoiceBtn.title =
+      'Start Voice';
+
+    startVoiceBtn.setAttribute(
+      'aria-label',
+      'Start Voice'
+    );
+
+  }
+
+  updateSendButton();
+}
+
+
+// =========================================================
+// STOP RECORDING
+// =========================================================
+
+function stopStartVoice(){
+
+  if(
+    !voiceRecorder ||
+    voiceRecorder.state === 'inactive'
+  ){
+    return;
+  }
+
+  voiceRecording = false;
+
+  startVoiceBtn.classList.remove(
+    'recording'
+  );
+
+  startVoiceBtn.classList.add(
+    'processing'
+  );
+
+  startVoiceBtn.title =
+    'Processing...';
+
+  startVoiceBtn.setAttribute(
+    'aria-label',
+    'Processing voice'
+  );
+
+  voiceRecorder.stop();
+
+}
+
+
+// =========================================================
+// PROCESS AUDIO
+// =========================================================
+
+async function processVoiceAudio(
+  audioBlob
+){
+
+  voiceProcessing = true;
+
+  try{
+
+    if(!audioBlob || audioBlob.size === 0){
+
+      throw new Error(
+        'Audio kosong.'
+      );
+
+    }
+
+    const idToken =
+      localStorage.getItem(
+        'id_token'
+      );
+
+    if(!idToken){
+
+      throw new Error(
+        'Sesi login sudah habis.'
+      );
+
+    }
+
+
+    console.log(
+      'Mengirim audio ke /api/voice:',
+      audioBlob.size,
+      'bytes'
+    );
+
+
+    // ===================================================
+    // KIRIM KE BACKEND
+    // ===================================================
+
+    const response =
+      await fetch(
+        '/api/voice',
+        {
+          method: 'POST',
+
+          headers: {
+            'Authorization':
+              'Bearer ' + idToken,
+
+            'Content-Type':
+              audioBlob.type ||
+              'audio/webm'
+          },
+
+          body: audioBlob
+        }
+      );
+
+
+    // ===================================================
+    // BACA RESPONSE
+    // ===================================================
+
+    let data = {};
+
+    try{
+
+      data =
+        await response.json();
+
+    }catch(e){
+
+      throw new Error(
+        'Response dari server tidak valid.'
+      );
+
+    }
+
+
+    if(response.status === 401){
+
+      throw new Error(
+        'Sesi login sudah habis. Silakan login ulang.'
+      );
+
+    }
+
+
+    if(!response.ok){
+
+      throw new Error(
+        data.error ||
+        'Voice API gagal.'
+      );
+
+    }
+
+
+    const userText =
+      (data.text || '').trim();
+
+    const answer =
+      (data.answer || '').trim();
+
+
+    if(!userText){
+
+      throw new Error(
+        'Suara tidak berhasil dikenali.'
+      );
+
+    }
+
+
+    // ===================================================
+    // TAMPILKAN USER MESSAGE
+    // ===================================================
+
+    addRow(
+      'user',
+      null
+    )
+    .appendChild(
+      Object.assign(
+        document.createElement(
+          'span'
+        ),
+        {
+          textContent:
+            userText
+        }
+      )
+    );
+
+
+    // ===================================================
+    // SIMPAN KE HISTORY
+    // ===================================================
+
+    history.push({
+      role: 'user',
+      content: userText
+    });
+
+
+    // ===================================================
+    // TAMPILKAN AI
+    // ===================================================
+
+    const aiRow =
+      addRow(
+        'assistant',
+        null
+      );
+
+    const aiBubble =
+      aiRow.querySelector(
+        '.bubble'
+      );
+
+
+    if(aiBubble){
+
+      aiBubble.innerHTML =
+        typeof renderMarkdown ===
+        'function'
+          ? renderMarkdown(answer)
+          : '';
+
+      if(
+        !aiBubble.innerHTML
+      ){
+
+        aiBubble.textContent =
+          answer;
+
+      }else{
+
+        highlightCodeBlocks(
+          aiBubble
+        );
+
+      }
+
+    }
+
+
+    // ===================================================
+    // SIMPAN AI KE HISTORY
+    // ===================================================
+
+    if(answer){
+
+      history.push({
+        role: 'assistant',
+        content: answer
+      });
+
+    }
+    
+    // ===================================================
+    // SCROLL
+    // ===================================================
+
+    messagesEl.scrollTop =
+      messagesEl.scrollHeight;
+
+
+    // ===================================================
+    // BACA JAWABAN DENGAN SUARA
+    // ===================================================
+
+    speakVoiceAnswer(
+      answer
+    );
+
+
+  }catch(error){
+
+    console.error(
+      'VOICE API ERROR:',
+      error
+    );
+
+    alert(
+      error?.message ||
+      'Terjadi kesalahan pada Voice Mode.'
+    );
+
+  }finally{
+
+    voiceProcessing = false;
+
+    resetVoiceButton();
+
+  }
+
+}
+
+
+// =========================================================
+// TEXT TO SPEECH
+// =========================================================
+
+function cleanTextForSpeech(text) {
+
+  if (!text) return '';
+
+  return text
+
+    // Code block
+    .replace(/```[\s\S]*?```/g, '')
+
+    // Inline code
+    .replace(/`([^`]+)`/g, '$1')
+
+    // Bold / italic
+    .replace(/\*\*\*(.*?)\*\*\*/g, '$1')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/_(.*?)_/g, '$1')
+
+    // Heading
+    .replace(/^#{1,6}\s+/gm, '')
+
+    // Bullet
+    .replace(/^\s*[-*+]\s+/gm, '')
+
+    // Numbered list
+    .replace(/^\s*\d+\.\s+/gm, '')
+
+    // Blockquote
+    .replace(/^\s*>\s?/gm, '')
+
+    // Link markdown
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+
+    // Horizontal line
+    .replace(/^\s*[-*_]{3,}\s*$/gm, '')
+
+    // Sisa karakter Markdown
+    .replace(/[*_~#`>|]/g, '')
+
+    // Rapikan spasi
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+
+function speakVoiceAnswer(text) {
+
+  if (
+    !text ||
+    !('speechSynthesis' in window)
+  ) {
+    return;
+  }
+
+  try {
+
+    window.speechSynthesis.cancel();
+
+    const cleanText =
+      cleanTextForSpeech(text);
+
+    if (!cleanText) return;
+
+    const utterance =
+      new SpeechSynthesisUtterance(
+        cleanText
+      );
+
+    utterance.lang = 'id-ID';
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    utterance.onstart = function () {
+      setAIVoiceButtonSpeaking(true);
+    };
+
+    utterance.onend = function () {
+      setAIVoiceButtonSpeaking(false);
+    };
+
+    utterance.onerror = function () {
+      setAIVoiceButtonSpeaking(false);
+    };
+
+    window.speechSynthesis.speak(
+      utterance
+    );
+
+  } catch (error) {
+
+    console.error(
+      'Text-to-speech error:',
+      error
+    );
+
+    setAIVoiceButtonSpeaking(false);
+  }
+}
+
+
+// =========================================================
+// RESET BUTTON
+// =========================================================
+
+function resetVoiceButton(){
+
+  voiceRecording = false;
+  voiceProcessing = false;
+
+  if(startVoiceBtn){
+
+    startVoiceBtn.classList.remove(
+      'recording',
+      'processing'
+    );
+
+    startVoiceBtn.title =
+      'Start Voice';
+
+    startVoiceBtn.setAttribute(
+      'aria-label',
+      'Start Voice'
+    );
+
+  }
+
+}
+
+
+// =========================================================
+// BUTTON EVENT
+// =========================================================
+
+if (startVoiceBtn) {
+
+  startVoiceBtn.addEventListener(
+    'click',
+    function () {
+
+      // AI sedang bicara → tombol menjadi STOP
+      if (aiSpeaking) {
+
+        window.speechSynthesis.cancel();
+
+        setAIVoiceButtonSpeaking(false);
+
+        return;
+      }
+
+      // Normal → Voice Mode
+      toggleStartVoice();
+
+    }
+  );
+
+}
+
+
+function showChatSuggestions(aiBubble, fullText = '') {
+
+  const text = String(fullText || '').toLowerCase();
+
+  let suggestions = [];
+
+  // LiDAR / GIS
+  if (
+    text.includes('lidar') ||
+    text.includes('dtm') ||
+    text.includes('dem') ||
+    text.includes('dsm') ||
+    text.includes('elevasi') ||
+    text.includes('slope') ||
+    text.includes('kontur')
+  ) {
+    suggestions = [
+      'Analisis area yang perlu divalidasi',
+      'Apa dampaknya terhadap kondisi terrain?',
+      'Berikan rekomendasi teknis',
+      'Data LiDAR apa yang diperlukan?'
+    ];
+  }
+
+  // Hidrologi / banjir
+  else if (
+    text.includes('banjir') ||
+    text.includes('drainage') ||
+    text.includes('hidrolog') ||
+    text.includes('genangan') ||
+    text.includes('drainase')
+  ) {
+    suggestions = [
+      'Analisis potensi genangan',
+      'Apa dampaknya?',
+      'Berikan rekomendasi mitigasi',
+      'Data apa yang perlu ditambahkan?'
+    ];
+  }
+
+  // Deployment / DevOps / hosting
+  else if (
+    text.includes('vercel') ||
+    text.includes('deploy') ||
+    text.includes('deployment') ||
+    text.includes('serverless') ||
+    text.includes('build failed') ||
+    text.includes('github') ||
+    text.includes('npm') ||
+    text.includes('error') ||
+    text.includes('function') ||
+    text.includes('.env') ||
+    text.includes('environment variable')
+  ) {
+    suggestions = [
+      'Bagaimana cara redeploy?',
+      'Apa penyebab error lain yang mungkin?',
+      'Bagaimana cara cek log lebih detail?',
+      'Bagaimana mencegah masalah ini terulang?'
+    ];
+  }
+
+  // SQL / programming
+  else if (
+    text.includes('sql') ||
+    text.includes('query') ||
+    text.includes('javascript') ||
+    text.includes('php') ||
+    text.includes('python') ||
+    text.includes('code')
+  ) {
+    suggestions = [
+      'Optimalkan kode ini',
+      'Jelaskan bagian yang bermasalah',
+      'Buat versi yang lebih sederhana',
+      'Cari potensi error'
+    ];
+  }
+
+  // Excel / data
+  else if (
+    text.includes('excel') ||
+    text.includes('csv') ||
+    text.includes('data') ||
+    text.includes('tabel')
+  ) {
+    suggestions = [
+      'Analisis data ini',
+      'Buatkan ringkasannya',
+      'Cari pola atau anomali',
+      'Buatkan tabel yang lebih rapi'
+    ];
+  }
+
+  // Default
+  else {
+    suggestions = [
+      'Jelaskan lebih detail',
+      'Apa dampaknya?',
+      'Berikan contoh',
+      'Apa langkah selanjutnya?'
+    ];
+  }
+
+  // Ambil maksimal 3 agar UI tetap ringkas
+  suggestions = suggestions.slice(0, 3);
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'chat-suggestions';
+
+  suggestions.forEach(text => {
+
+    const button = document.createElement('button');
+
+    button.type = 'button';
+    button.className = 'suggestion-btn';
+    button.textContent = text;
+
+    button.addEventListener('click', () => {
+
+      input.value = text;
+
+      updateSendButton();
+
+      input.focus();
+
+      sendMessage();
+    });
+
+    wrapper.appendChild(button);
+  });
+
+  aiBubble.appendChild(wrapper);
+}
+
+function addQuickActions(aiBubble, fullText) {
+
+  const wrapper = document.createElement('div');
+
+  wrapper.className = 'chat-quick-actions';
+
+  const actions = [
+    {
+      icon: '↻',
+      label: 'Regenerate',
+      action: () => {
+        input.value = history.length >= 2
+          ? history[history.length - 2].content
+          : '';
+
+        updateSendButton();
+        sendMessage();
+      }
+    },
+    {
+      icon: '⧉',
+      label: 'Salin',
+      action: () => {
+        navigator.clipboard.writeText(fullText);
+      }
+    },
+    {
+      icon: '✦',
+      label: 'Ringkas',
+      action: () => {
+        input.value = 'Ringkas jawaban sebelumnya menjadi poin-poin singkat.';
+        updateSendButton();
+        sendMessage();
+      }
+    },
+    {
+      icon: '▤',
+      label: 'Jadikan tabel',
+      action: () => {
+        input.value = 'Ubah informasi sebelumnya menjadi tabel yang rapi.';
+        updateSendButton();
+        sendMessage();
+      }
+    }
+  ];
+
+  actions.forEach(item => {
+
+    const button = document.createElement('button');
+
+    button.type = 'button';
+    button.className = 'quick-action-btn';
+
+    button.innerHTML =
+      `<span>${item.icon}</span>${item.label}`;
+
+    button.addEventListener(
+      'click',
+      item.action
+    );
+
+    wrapper.appendChild(button);
+  });
+
+  aiBubble.appendChild(wrapper);
+}
+
+// =========================================================
+// TYPEWRITER EFFECT (JAWABAN AI MUNCUL BERTAHAP)
+// =========================================================
+// Sebelumnya, setiap chunk dari stream langsung dirender utuh
+// ke innerHTML, jadi kalau Groq mengirim potongan teks yang
+// besar sekaligus, jawaban terasa "muncul semua tiba-tiba".
+// Fungsi ini memisahkan KECEPATAN TERIMA DATA (dari network)
+// dari KECEPATAN TAMPIL (ke layar) — teks yang sudah diterima
+// ditampilkan sedikit demi sedikit dengan interval tetap,
+// sehingga terlihat seperti sedang diketik.
+
+function createTypewriter(
+  aiBubble,
+  getFullText
+){
+
+  const CHARS_PER_TICK = 3;
+  const TICK_MS = 16;
+
+  let displayedLength = 0;
+  let timer = null;
+
+
+  function renderUpTo(
+    length
+  ){
+
+    const fullText =
+      getFullText();
+
+    const stayPinned =
+      isNearBottom();
+
+    aiBubble.innerHTML =
+      renderMarkdown(
+        fullText.slice(
+          0,
+          length
+        )
+      );
+
+    highlightCodeBlocks(
+      aiBubble
+    );
+
+    if(
+      window.MathJax &&
+      MathJax.typesetPromise
+    ){
+      MathJax.typesetPromise([
+        aiBubble
+      ]).catch(
+        console.error
+      );
+    }
+
+    if(stayPinned){
+
+      messagesEl.scrollTop =
+        messagesEl.scrollHeight;
+
+    }
+
+  }
+
+
+  function tick(){
+
+    const fullText =
+      getFullText();
+
+    if(
+      displayedLength <
+      fullText.length
+    ){
+
+      displayedLength =
+        Math.min(
+          fullText.length,
+          displayedLength +
+            CHARS_PER_TICK
+        );
+
+      renderUpTo(
+        displayedLength
+      );
+
+    }
+
+  }
+
+
+  function start(){
+
+    if(timer) return;
+
+    timer =
+      setInterval(
+        tick,
+        TICK_MS
+      );
+
+  }
+
+
+  // Dipanggil setelah stream network selesai — menunggu
+  // sampai animasi ngetik benar-benar mengejar teks terakhir,
+  // baru resolve. Supaya history/quick actions/suggestion
+  // baru muncul setelah pengetikan visual selesai.
+  function finish(){
+
+    start();
+
+    return new Promise(
+      (resolve) => {
+
+        const check =
+          setInterval(
+            () => {
+
+              const fullText =
+                getFullText();
+
+              if(
+                displayedLength >=
+                fullText.length
+              ){
+
+                clearInterval(
+                  check
+                );
+
+                clearInterval(
+                  timer
+                );
+
+                timer = null;
+
+                renderUpTo(
+                  fullText.length
+                );
+
+                resolve();
+
+              }
+
+            },
+            TICK_MS
+          );
+
+      }
+    );
+
+  }
+
+
+  return {
+    start,
+    finish
+  };
+
+}
+
+
+// =========================================================
+// SEND MESSAGE
+// =========================================================
+
+async function sendMessage(){
+
+  const text =
+    input.value.trim();
+
+  if (!text && !pendingAttachment) {
+    return;
+  }
+
+
+  const attachment =
+    pendingAttachment;
+
+
+   if (
+    text &&
+    !attachment &&
+    isImageGenerationRequest(text)
+  ) {
+
+    await sendImageGeneration(text);
+
+    return;
+
+  }
+
+
+  const idToken =
+    localStorage.getItem(
+      'id_token'
+    );
+
+
+  if(!idToken){
+
+    alert(
+      'Sesi login sudah habis. Silakan login ulang dengan Google.'
+    );
+
+
+    document.getElementById(
+      'chat-screen'
+    ).style.display =
+      'none';
+
+
+    document.getElementById(
+      'login-screen'
+    ).style.display =
+      'flex';
+
+
+    return;
+
+  }
+
+
+  input.value = '';
+  updateSendButton();
+  
+
+  input.style.height =
+    'auto';
+
+
+  clearAttachment();
+
+
+  sendBtn.disabled =
+    true;
+
+
+  // USER BUBBLE
+
+  addRow(
+    'user',
+    attachment
+  ).appendChild(
+
+    Object.assign(
+      document.createElement(
+        'span'
+      ),
+      {
+        textContent:
+          text
+      }
+    )
+
+  );
+
+
+  // MESSAGE CONTENT
+
+  let messageContent;
+
+
+  if(
+    attachment &&
+    attachment.kind === 'image'
+  ){
+
+    messageContent = [
+
+      {
+        type:'text',
+
+        text:
+          text ||
+          '(Lihat gambar terlampir)'
+
+      },
+
+      {
+        type:'image_url',
+
+        image_url:{
+          url:
+            attachment.dataUrl
+        }
+
+      }
+
+    ];
+
+  }
+
+  else if(
+    attachment &&
+    attachment.kind === 'text'
+  ){
+
+    const notice =
+      attachment.truncated
+
+        ? '\n\n[File "' +
+          attachment.name +
+          '" dipotong karena terlalu panjang]\n---\n'
+
+        : '\n\n[Isi file "' +
+          attachment.name +
+          '"]\n---\n';
+
+
+    messageContent =
+      (
+        text
+          ? text
+          : 'Tolong lihat isi file berikut:'
+      ) +
+
+      notice +
+
+      attachment.text;
+
+  }
+
+  else{
+
+    messageContent =
+      text;
+
+  }
+
+
+  history.push({
+
+    role:'user',
+
+    content:
+      messageContent
+
+  });
+
+
+  // AI BUBBLE
+
+  const aiBubble =
+  addRow('ai');
+
+  aiBubble.innerHTML = `
+    <div class="ai-thinking">
+      <div class="ai-thinking-icon">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+  
+      <div class="ai-thinking-text">
+        Menganalisis pertanyaan...
+      </div>
+    </div>
+  `;
+  
+  startAIThinking (aiBubble);
+  
+  let fullText = '';
+  
+  const isNewConversation =
+    currentConversationId === null;
+
+
+  try{
+
+    startAIThinking(aiBubble);
+    const response =
+      await fetch(
+        '/api/chat',
+        {
+
+          method:'POST',
+
+          headers:{
+
+            'Content-Type':
+              'application/json',
+
+            'Authorization':
+              'Bearer ' + idToken
+
+          },
+
+         body:
+            JSON.stringify({
+          
+              messages:
+                trimHistoryForSend(
+                  history
+                ),
+          
+              conversationId:
+                currentConversationId,
+          
+              projectId:currentProjectId
+          
+            })
+
+        }
+      );
+
+
+    // CONVERSATION ID
+
+    const convIdHeader =
+      response.headers.get(
+        'X-Conversation-Id'
+      );
+
+
+    if(convIdHeader){
+
+      currentConversationId =
+        Number(
+          convIdHeader
+        );
+
+    }
+
+    // ============================================================
+    // CHAT LIMIT / RATE LIMIT
+    // ============================================================
+    if(response.status === 429){
+
+      stopAIThinking(
+        aiBubble
+      );
+    
+      aiBubble.textContent =
+        'Limit Chat sudah habis. Silakan coba lagi beberapa saat lagi.';
+    
+      sendBtn.disabled = false;
+    
+      return;
+    }
+
+    // 401
+    // ============================================================
+    // 401 = SESSION BENAR-BENAR TIDAK VALID
+    // ============================================================
+    if(response.status === 401){
+      stopAIThinking();
+      let errorMessage = '';
+    
+      try{
+        const data = await response.json(); 
+    
+        errorMessage =
+          data?.error ||
+          data?.message ||
+          '';
+      }catch(e){}
+    
+      console.error(
+        'API 401:',
+        errorMessage
+      );
+    
+      // Hanya anggap session habis jika backend memang
+      // mengirim pesan unauthorized/session.
+      const isSessionError =
+        /unauthorized|session|token|login|expired|kedaluwarsa/i
+          .test(errorMessage);
+    
+      if(!isSessionError){
+    
+        aiBubble.textContent =
+          errorMessage ||
+          'Terjadi error pada server AI.';
+    
+        sendBtn.disabled = false;
+    
+        return;
+      }
+    
+      // Memang session invalid
+      aiBubble.textContent =
+        'Sesi login sudah habis. Silakan login kembali.';
+    
+      localStorage.removeItem('id_token');
+    
+      setTimeout(() => {
+    
+        document.getElementById(
+          'chat-screen'
+        ).style.display = 'none';
+    
+        document.getElementById(
+          'login-screen'
+        ).style.display = 'flex';
+    
+      }, 1200);
+    
+      return;
+    }
+
+
+    // ERROR
+    if(
+      !response.ok ||
+      !response.body
+    ){
+      stopAIThinking();
+      let errorMessage =
+        'Maaf, AI sedang tidak bisa dihubungi. Silakan coba lagi beberapa saat lagi.';
+    
+      try{
+        const data =
+          await response.json();
+    
+        if(data && data.error){
+          errorMessage =
+            data.error;
+        }
+      }catch(e){}
+    
+      aiBubble.textContent =
+        errorMessage;
+    
+      sendBtn.disabled = false;
+    
+      return;
+    }
+
+
+    // STREAM
+
+    const reader =
+      response.body.getReader();
+
+
+    const decoder =
+      new TextDecoder();
+
+
+    let buffer = '';
+
+    let started = false;
+
+    const typewriter =
+      createTypewriter(
+        aiBubble,
+        () => fullText
+      );
+
+
+    while(true){
+
+      const {
+        done,
+        value
+      } =
+        await reader.read();
+
+
+      if(done)
+        break;
+
+
+      buffer +=
+        decoder.decode(
+          value,
+          {
+            stream:true
+          }
+        );
+
+
+      const parts =
+        buffer.split(
+          '\n\n'
+        );
+
+
+      buffer =
+        parts.pop();
+
+
+      for(
+        const part of parts
+      ){
+
+        const lines =
+          part.split('\n');
+
+
+        const dataLine =
+          lines.find(
+            l =>
+              l.startsWith(
+                'data:'
+              )
+          );
+
+
+        if(!dataLine)
+          continue;
+
+
+        const raw =
+          dataLine
+            .slice(5)
+            .trim();
+
+
+        if(
+          !raw ||
+          raw === '[DONE]'
+        )
+          continue;
+
+
+        try{
+
+          const json =
+            JSON.parse(
+              raw
+            );
+
+
+          const choice =
+            json.choices &&
+            json.choices[0];
+
+
+          const chunkText =
+            choice &&
+            choice.delta &&
+            choice.delta.content;
+
+
+          if(chunkText){
+
+          // Token pertama dari AI sudah diterima
+          if(!started){
+        
+            stopAIThinking(
+              aiBubble
+            );
+
+            typewriter.start();
+        
+          }
+        
+          started = true;
+        
+          fullText +=
+            chunkText;
+
+          }
+
+
+          const finishReason =
+            choice &&
+            choice.finish_reason;
+
+
+          if(
+            finishReason &&
+            finishReason !== 'stop' &&
+            !chunkText &&
+            !started
+          ){
+
+            aiBubble.textContent =
+              'Respons berhenti (alasan: ' +
+              finishReason +
+              ').';
+
+            started = true;
+
+          }
+
+
+        }catch(e){
+
+          // Abaikan baris non-JSON
+
+        }
+
+      }
+
+    }
+
+
+    // Tunggu animasi ngetik selesai mengejar teks terakhir
+    // sebelum lanjut (biar suggestion/quick actions gak
+    // muncul lebih dulu dari teks yang masih "diketik").
+    await typewriter.finish();
+
+
+    // SAVE AI HISTORY
+
+    if(fullText){
+
+      history.push({
+    
+        role:'assistant',
+    
+        content:
+          fullText
+    
+      });
+    
+      showChatSuggestions(aiBubble, fullText);
+      addQuickActions(aiBubble, fullText);
+    }
+
+    else if(!started){
+
+      aiBubble.textContent =
+        'Tidak ada balasan diterima. Coba lagi.';
+
+    }
+
+
+    // REFRESH SIDEBAR
+
+    if(
+      isNewConversation &&
+      currentConversationId !== null
+    ){
+
+      loadConversations(
+        false
+      );
+
+    }
+
+
+  }catch(e){
+
+    console.error(
+      'Chat error:',
+      e
+    );
+
+
+    aiBubble.textContent =
+      'Tidak bisa terhubung ke AI. Periksa koneksi lalu coba lagi.';
+
+  }finally{
+
+    sendBtn.disabled =
+      false;
+
+  }
+
+}
+
+
+// =========================================================
+// SEND BUTTON
+// =========================================================
+
+sendBtn.addEventListener(
+  'click',
+  sendMessage
+);
+
+
+// =========================================================
+// ENTER TO SEND
+// =========================================================
+
+input.addEventListener(
+  'keydown',
+  (e) => {
+
+    if(
+      e.key === 'Enter' &&
+      !e.shiftKey
+    ){
+
+      e.preventDefault();
+
+      sendMessage();
+
+    }
+
+  }
+);
+
+
+/* =========================================================
+   SIDEBAR RESPONSIVE + MANUAL RESIZE
+   ========================================================= */
+
+(() => {
+  const chatBody = document.getElementById("chat-body");
+  const sidebar = document.getElementById("sidebar");
+  const toggleBtn = document.getElementById("sidebar-toggle-btn");
+  const backdrop = document.getElementById("sidebar-backdrop");
+
+  if (!chatBody || !sidebar) return;
+
+  const MIN_WIDTH = 220;
+  const MAX_WIDTH = 480;
+  const MOBILE_BREAKPOINT = 700;
+
+  let isResizing = false;
+
+  function isMobile() {
+    return window.innerWidth <= MOBILE_BREAKPOINT;
+  }
+
+  /* -----------------------------------------
+     Toggle sidebar
+     ----------------------------------------- */
+
+  function toggleSidebar() {
+    if (isMobile()) {
+      chatBody.classList.toggle("sidebar-open");
+    } else {
+      chatBody.classList.toggle("sidebar-collapsed");
+    }
+  }
+
+  function closeSidebarMobile() {
+    if (isMobile()) {
+      chatBody.classList.remove("sidebar-open");
+    }
+  }
+
+  toggleBtn?.addEventListener("click", toggleSidebar);
+
+  backdrop?.addEventListener("click", closeSidebarMobile);
+
+  /* -----------------------------------------
+     Manual resize
+     ----------------------------------------- */
+
+  sidebar.addEventListener("pointerdown", (event) => {
+
+    if (isMobile()) return;
+
+    const rect = sidebar.getBoundingClientRect();
+
+    /* Hanya aktif kalau klik area kanan sidebar */
+    if (event.clientX < rect.right - 12) return;
+
+    isResizing = true;
+
+    sidebar.setPointerCapture?.(event.pointerId);
+
+    document.body.classList.add("sidebar-resizing");
+
+    event.preventDefault();
+  });
+
+  document.addEventListener("pointermove", (event) => {
+
+    if (!isResizing) return;
+
+    let width = event.clientX;
+
+    width = Math.max(MIN_WIDTH, width);
+    width = Math.min(MAX_WIDTH, width);
+
+    chatBody.style.setProperty("--sidebar-width", `${width}px`);
+  });
+
+  document.addEventListener("pointerup", () => {
+
+    if (!isResizing) return;
+
+    isResizing = false;
+
+    document.body.classList.remove("sidebar-resizing");
+
+    /* Simpan ukuran sidebar */
+    const width = parseInt(
+      getComputedStyle(chatBody)
+        .getPropertyValue("--sidebar-width")
+    );
+
+    if (width) {
+      localStorage.setItem("tanya_sidebar_width", width);
+    }
+  });
+
+  /* -----------------------------------------
+     Load ukuran sidebar terakhir
+     ----------------------------------------- */
+
+  const savedWidth = localStorage.getItem("tanya_sidebar_width");
+
+  if (savedWidth && !isNaN(savedWidth)) {
+
+    const width = Math.max(
+      MIN_WIDTH,
+      Math.min(MAX_WIDTH, Number(savedWidth))
+    );
+
+    chatBody.style.setProperty(
+      "--sidebar-width",
+      `${width}px`
+    );
+  }
+
+  /* -----------------------------------------
+     Reset mobile state saat resize window
+     ----------------------------------------- */
+
+  window.addEventListener("resize", () => {
+
+    if (!isMobile()) {
+      chatBody.classList.remove("sidebar-open");
+    }
+  });
+
+})();
+
+
+// =========================================================
+// VOICE INPUT — SPEECH TO TEXT
+// =========================================================
+
+(() => {
+  const voiceBtn = document.getElementById("voice-btn");
+  const input = document.getElementById("chat-input");
+
+  if (!voiceBtn || !input) return;
+
+  const SpeechRecognition =
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    voiceBtn.style.display = "none";
+    console.warn("Browser tidak mendukung Speech Recognition.");
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+
+  recognition.lang = "id-ID";
+  recognition.continuous = false;
+  recognition.interimResults = true;
+
+  let recording = false;
+
+  voiceBtn.addEventListener("click", () => {
+    if (recording) {
+      recognition.stop();
+      return;
+    }
+
+    try {
+      recognition.start();
+    } catch (error) {
+      console.error("Voice start error:", error);
+    }
+  });
+
+  recognition.onstart = () => {
+    recording = true;
+    voiceBtn.classList.add("recording");
+    voiceBtn.title = "Berhenti merekam";
+  };
+
+  recognition.onresult = (event) => {
+    let transcript = "";
+
+    for (
+      let i = event.resultIndex;
+      i < event.results.length;
+      i++
+    ) {
+      transcript += event.results[i][0].transcript;
+    }
+
+    if (transcript.trim()) {
+      input.value = transcript.trim();
+
+      input.dispatchEvent(new Event("input", {
+        bubbles: true
+      }));
+    }
+  };
+
+  recognition.onerror = (event) => {
+    console.error("Speech recognition error:", event.error);
+  };
+
+  recognition.onend = () => {
+    recording = false;
+    voiceBtn.classList.remove("recording");
+    voiceBtn.title = "Bicara dengan Tanya";
+  };
+})();
+
+// =========================================================
+// PROJECTS
+// =========================================================
+
+async function loadProjects() {
+  const idToken = localStorage.getItem("id_token");
+  const projectList = document.getElementById("sidebar-project-list");
+
+  if (!projectList) return;
+
+  // Belum login
+  if (!idToken) {
+    projectList.innerHTML = "";
+    return;
+  }
+
+  // Loading
+  projectList.innerHTML = `
+    <div class="project-loading">
+      Memuat project...
+    </div>
+  `;
+
+  try {
+    const response = await fetch("/api/projects", {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${idToken}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(
+        data.error || "Gagal mengambil project"
+      );
+    }
+
+    // Bersihkan daftar lama
+    projectList.innerHTML = "";
+
+    // Tidak ada project
+    if (!Array.isArray(data.projects) || data.projects.length === 0) {
+      projectList.innerHTML = `
+        <div class="project-empty">
+          Belum ada project
+        </div>
+      `;
+      return;
+    }
+
+    // Render project
+    data.projects.forEach((project) => {
+      const button = document.createElement("button");
+
+      button.type = "button";
+      button.className = "project-item";
+      button.dataset.projectId = project.id;
+
+      button.innerHTML = `
+        <span class="project-item-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
+          </svg>
+        </span>
+      
+        <span class="project-item-name"></span>
+      
+        <button type="button" class="project-delete-btn" title="Hapus project" aria-label="Hapus project">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"/>
+            <path d="M8 6V4h8v2"/>
+            <path d="M19 6l-1 14H6L5 6"/>
+            <path d="M10 11v5"/>
+            <path d="M14 11v5"/>
+          </svg>
+        </button>
+      `;
+      
+      const nameElement = button.querySelector(".project-item-name");
+      nameElement.textContent = project.name || "Untitled Project";
+
+      const deleteBtn = button.querySelector(".project-delete-btn");
+      deleteBtn.addEventListener("click", async (e) => {
+      
+        e.preventDefault();
+        e.stopPropagation();
+      
+        const confirmed = confirm(
+          `Hapus project "${project.name || 'Untitled Project'}"?\n\nPercakapan di dalamnya tidak akan terhapus, hanya dikeluarkan dari project.`
+        );
+      
+        if (!confirmed) return;
+      
+        const idToken = localStorage.getItem('id_token');
+        if (!idToken) {
+          alert('Sesi login sudah habis. Silakan login kembali.');
+          return;
+        }
+      
+        try {
+      
+          const response = await fetch(
+            '/api/projects?projectId=' + encodeURIComponent(project.id),
+            {
+              method: 'DELETE',
+              headers: { 'Authorization': 'Bearer ' + idToken }
+            }
+          );
+      
+          const data = await response.json().catch(() => ({}));
+      
+          if (!response.ok) {
+            throw new Error(data.error || 'Gagal menghapus project.');
+          }
+      
+          if (Number(currentProjectId) === Number(project.id)) {
+            currentProjectId = null;
+            localStorage.removeItem('active_project_id');
+            localStorage.removeItem('active_project_name');
+            document.getElementById('messages').innerHTML = emptyStateHTML;
+          }
+      
+          await loadConversations(true);
+          await loadProjects();
+      
+        } catch (err) {
+          console.error('Delete project error:', err);
+          alert(err.message || 'Gagal menghapus project.');
+        }
+      
+      });
+
+      button.addEventListener("click", async () => {
+
+  currentProjectId = project.id;
+
+  document.querySelectorAll('.project-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  button.classList.add('active');
+
+  localStorage.setItem('active_project_id', project.id);
+  localStorage.setItem('active_project_name', project.name || 'Untitled Project');
+
+  // Cari percakapan milik project ini yang sudah ada di sidebar
+  const projectConversations = conversationsList.filter(
+    c => Number(c.project_id) === Number(project.id)
+  );
+
+  if(projectConversations.length > 0){
+
+    // Ada percakapan lama di project ini → langsung buka yang terbaru
+    currentConversationId = null;   // reset dulu supaya selectConversation tidak skip
+    await selectConversation(projectConversations[0].id);
+
+  }else{
+
+    // Belum ada percakapan di project ini → tampilkan placeholder
+    currentConversationId = null;
+    history = [];
+
+    const messages = document.getElementById('messages');
+    if(messages){
+      messages.innerHTML = `
+        <div class="project-page">
+          <div class="project-page-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
+            </svg>
+          </div>
+          <h2>${escapeHtml(project.name || 'Untitled Project')}</h2>
+          <p>Project ini siap digunakan.</p>
+          <button type="button" class="project-start-chat" onclick="document.getElementById('chat-input').focus()">
+            Mulai Percakapan
+          </button>
+        </div>
+      `;
+    }
+
+    renderConversationList();
+  }
+
+  const chatInput = document.getElementById('chat-input');
+  if(chatInput) chatInput.focus();
+
+});
+
+      projectList.appendChild(button);
+    });
+
+  } catch (error) {
+    console.error(
+      "Load projects error:",
+      error
+    );
+
+    projectList.innerHTML = `
+      <div class="project-empty">
+        Gagal memuat project
+      </div>
+    `;
+  }
+}
+
+async function restoreSession() {
+
+  const token = localStorage.getItem('id_token');
+  if (!token) return;
+
+  showChatScreen();
+
+  currentProjectId =
+    localStorage.getItem('active_project_id') || null;
+
+  // Sidebar PERCAKAPAN selalu load semua, TIDAK difilter project
+  await loadConversations(true);
+
+  await loadProjects();
+
+  // Kalau sebelumnya sedang buka project, tandai foldernya aktif
+  if(currentProjectId){
+    setTimeout(() => {
+      const btn = document.querySelector(
+        `.project-item[data-project-id="${currentProjectId}"]`
+      );
+      if(btn) btn.classList.add('active');
+    }, 0);
+  }
+
+  const input = document.getElementById('chat-input');
+  if (input) input.focus();
+}
+
+async function createProject() {
+  const idToken = localStorage.getItem('id_token');
+  const name =
+    prompt("Nama Project:");
+
+  if (!name || !name.trim()) {
+    return;
+  }
+
+
+  try {
+
+    const response =
+      await fetch("/api/projects", {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          Authorization:
+            'Bearer ' + idToken
+        },
+
+        body: JSON.stringify({
+          name: name.trim()
+        })
+      });
+
+
+    const data =
+      await response.json();
+
+
+    if (!response.ok || !data.success) {
+
+      throw new Error(
+        data.error ||
+        "Gagal membuat project"
+      );
+
+    }
+
+
+    await loadProjects();
+
+
+  } catch (error) {
+
+    console.error(
+      "Create project error:",
+      error
+    );
+
+    alert(
+      error.message ||
+      "Gagal membuat project"
+    );
+
+  }
+
+}
+
+const projectsBtn =
+  document.getElementById(
+    "projects-btn"
+  );
+
+
+if (projectsBtn) {
+
+  projectsBtn.addEventListener(
+    "click",
+    createProject
+  );
+
+}
+
+// =========================================================
+// AUTO RESIZE TEXTAREA
+// =========================================================
+
+input.addEventListener(
+  'input',
+  () => {
+
+    input.style.height =
+      'auto';
+
+
+    input.style.height =
+      Math.min(
+        input.scrollHeight,
+        140
+      ) + 'px';
+
+  }
+);
+
+document.addEventListener('click', function (e) {
+  const img = e.target.closest('.bubble img');
+
+  if (!img) return;
+
+  // Jangan proses gambar kecil/icon
+  if (img.width < 100 || img.height < 100) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'image-zoom-overlay';
+
+  const zoomImg = document.createElement('img');
+  zoomImg.src = img.src;
+  zoomImg.alt = img.alt || 'Preview gambar';
+
+  overlay.appendChild(zoomImg);
+  document.body.appendChild(overlay);
+
+  requestAnimationFrame(() => {
+    overlay.classList.add('active');
+  });
+
+  overlay.addEventListener('click', () => {
+    overlay.classList.remove('active');
+
+    setTimeout(() => {
+      overlay.remove();
+    }, 200);
+  });
+});
+
+// =========================================================
+// EXPORT INSIGHT PDF
+// =========================================================
+
+function initPdfExport() {
+
+  const header = document.querySelector(
+    '#chat-screen header'
+  );
+
+  if (!header) return;
+
+  if (document.getElementById('export-pdf-btn')) {
+    return;
+  }
+
+  const userMenu =
+    document.getElementById('user-menu');
+
+  const button =
+    document.createElement('button');
+
+  button.id = 'export-pdf-btn';
+  button.type = 'button';
+  button.title = 'Export Insight PDF';
+
+  button.innerHTML = `
+    <span>▣</span>
+    <span class="export-pdf-label">PDF</span>
+  `;
+
+  button.addEventListener(
+    'click',
+    exportInsightPDF
+  );
+
+  if (userMenu) {
+    userMenu.insertBefore(
+      button,
+      userMenu.firstChild
+    );
+  } else {
+    header.appendChild(button);
+  }
+}
+
+
+// =========================================================
+// AMBIL TEKS TERAKHIR DARI AI
+// =========================================================
+
+function getLatestAIInsight() {
+
+  const bubbles =
+    document.querySelectorAll(
+      '#messages .row.ai .bubble'
+    );
+
+  if (!bubbles.length) {
+    return '';
+  }
+
+  const last =
+    bubbles[bubbles.length - 1];
+
+  return last.innerText.trim();
+}
+
+
+// =========================================================
+// AMBIL FOTO DARI CHAT
+// =========================================================
+
+function getChatImages() {
+
+  const images =
+    document.querySelectorAll(
+      '#messages .msg-image'
+    );
+
+  return Array.from(images)
+    .map(img => ({
+      src: img.src,
+      alt: img.alt || 'Foto analisis'
+    }))
+    .filter(item => item.src);
+}
+
+
+// =========================================================
+// BERSIHKAN TEKS UNTUK PDF
+// =========================================================
+
+function cleanInsightText(text) {
+
+  return String(text || '')
+    .replace(/\r/g, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+
+// =========================================================
+// PARSE INSIGHT MENJADI BAGIAN
+// =========================================================
+
+function parseInsightSections(text) {
+
+  const sections = [];
+
+  const normalized =
+    cleanInsightText(text);
+
+  const lines =
+    normalized.split('\n');
+
+  let current = null;
+
+  const sectionNames = [
+    'TEMUAN',
+    'DAMPAK',
+    'TINDAKAN',
+    'REKOMENDASI TEKNIS',
+    'REKOMENDASI',
+    'PRIORITAS',
+    'AREA',
+    'VALIDASI',
+    'KESIMPULAN',
+    'ANALISIS',
+    'EXECUTIVE SUMMARY',
+    'RINGKASAN'
+  ];
+
+  function startSection(title) {
+
+    current = {
+      title,
+      content: []
+    };
+
+    sections.push(current);
+  }
+
+  for (const rawLine of lines) {
+
+    const line =
+      rawLine.trim();
+
+    if (!line) {
+
+      if (current) {
+        current.content.push('');
+      }
+
+      continue;
+    }
+
+    const cleanTitle =
+      line
+        .replace(/^#+\s*/, '')
+        .replace(/^\*\*/, '')
+        .replace(/\*\*$/, '')
+        .replace(/:$/, '')
+        .trim()
+        .toUpperCase();
+
+    const matched =
+      sectionNames.find(
+        name =>
+          cleanTitle === name ||
+          cleanTitle.startsWith(name + ' ')
+      );
+
+    if (matched) {
+
+      startSection(
+        matched
+      );
+
+      continue;
+    }
+
+    if (!current) {
+
+      startSection(
+        'INSIGHT ANALISIS'
+      );
+
+    }
+
+    current.content.push(
+      line
+    );
+  }
+
+  return sections;
+}
+
+
+// =========================================================
+// ESCAPE HTML
+// =========================================================
+
+function escapePdfHTML(value) {
+
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+
+// =========================================================
+// FORMAT PARAGRAF
+// =========================================================
+
+function formatPdfContent(content) {
+
+  return content
+    .map(line => {
+
+      const text =
+        line.trim();
+
+      if (!text) {
+        return '<div class="pdf-space"></div>';
+      }
+
+      if (
+        /^[-•*]\s+/.test(text)
+      ) {
+
+        return `
+          <div class="pdf-bullet">
+            <span>•</span>
+            <div>
+              ${escapePdfHTML(
+                text.replace(
+                  /^[-•*]\s+/,
+                  ''
+                )
+              )}
+            </div>
+          </div>
+        `;
+      }
+
+      if (
+        /^\d+[.)]\s+/.test(text)
+      ) {
+
+        const match =
+          text.match(
+            /^(\d+)[.)]\s+(.+)$/
+          );
+
+        return `
+          <div class="pdf-number">
+            <span>${match[1]}.</span>
+            <div>${escapePdfHTML(match[2])}</div>
+          </div>
+        `;
+      }
+
+      return `
+        <p class="pdf-paragraph">
+          ${escapePdfHTML(text)}
+        </p>
+      `;
+
+    })
+    .join('');
+}
+
+
+// =========================================================
+// GENERATE REPORT HTML
+// =========================================================
+
+function buildInsightReportHTML() {
+
+  const insight =
+    getLatestAIInsight();
+
+  if (!insight) {
+    throw new Error(
+      'Belum ada hasil analisis AI yang bisa diexport.'
+    );
+  }
+
+  const images =
+    getChatImages();
+
+  const sections =
+    parseInsightSections(
+      insight
+    );
+
+  const now =
+    new Date();
+
+  const dateText =
+    now.toLocaleDateString(
+      'id-ID',
+      {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      }
+    );
+
+  const timeText =
+    now.toLocaleTimeString(
+      'id-ID',
+      {
+        hour: '2-digit',
+        minute: '2-digit'
+      }
+    );
+
+  const imageHTML =
+    images.length
+      ? `
+        <section class="pdf-section">
+          <div class="pdf-section-title">
+            <span class="pdf-section-number">01</span>
+            <span>Foto Analisis</span>
+          </div>
+
+          <div class="pdf-images">
+            ${images.map((image, index) => `
+              <figure class="pdf-image-card">
+                <img
+                  src="${image.src}"
+                  alt="${escapePdfHTML(image.alt)}"
+                >
+                <figcaption>
+                  Foto ${index + 1}
+                </figcaption>
+              </figure>
+            `).join('')}
+          </div>
+        </section>
+      `
+      : '';
+
+  const sectionStart =
+    images.length
+      ? 2
+      : 1;
+
+  const sectionsHTML =
+    sections
+      .map((section, index) => {
+
+        const number =
+          String(
+            sectionStart + index
+          ).padStart(2, '0');
+
+        return `
+          <section class="pdf-section">
+            <div class="pdf-section-title">
+              <span class="pdf-section-number">
+                ${number}
+              </span>
+
+              <span>
+                ${escapePdfHTML(
+                  section.title
+                )}
+              </span>
+            </div>
+
+            <div class="pdf-section-content">
+              ${formatPdfContent(
+                section.content
+              )}
+            </div>
+          </section>
+        `;
+
+      })
+      .join('');
+
+  return `
+<!DOCTYPE html>
+<html lang="id">
+<head>
+
+<meta charset="UTF-8">
+
+<style>
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+
+  background: #ffffff;
+  color: #1f2937;
+
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+}
+
+.pdf-report {
+  width: 794px;
+  min-height: 1123px;
+
+  padding: 54px 58px 64px;
+
+  background: #ffffff;
+}
+
+.pdf-header {
+  border-bottom: 2px solid #c99b4a;
+
+  padding-bottom: 22px;
+  margin-bottom: 28px;
+}
+
+.pdf-brand {
+  font-size: 11px;
+  font-weight: 700;
+
+  letter-spacing: 2px;
+
+  color: #a8752f;
+
+  text-transform: uppercase;
+
+  margin-bottom: 14px;
+}
+
+.pdf-title {
+  margin: 0;
+
+  font-size: 27px;
+  line-height: 1.2;
+
+  color: #111827;
+
+  font-weight: 700;
+}
+
+.pdf-subtitle {
+  margin-top: 8px;
+
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.pdf-meta {
+  display: flex;
+  justify-content: space-between;
+
+  margin-top: 18px;
+
+  font-size: 10px;
+  color: #6b7280;
+}
+
+.pdf-section {
+  margin-top: 27px;
+
+  page-break-inside: avoid;
+}
+
+.pdf-section-title {
+  display: flex;
+  align-items: center;
+
+  gap: 10px;
+
+  margin-bottom: 13px;
+
+  padding-bottom: 8px;
+
+  border-bottom: 1px solid #e5e7eb;
+
+  font-size: 14px;
+
+  font-weight: 700;
+
+  color: #111827;
+
+  text-transform: uppercase;
+
+  letter-spacing: .5px;
+}
+
+.pdf-section-number {
+  display: inline-flex;
+
+  align-items: center;
+  justify-content: center;
+
+  width: 28px;
+  height: 22px;
+
+  border-radius: 5px;
+
+  background: #f7edd9;
+
+  color: #a8752f;
+
+  font-size: 9px;
+
+  font-weight: 700;
+}
+
+.pdf-section-content {
+  font-size: 11.5px;
+  line-height: 1.7;
+
+  color: #374151;
+}
+
+.pdf-paragraph {
+  margin: 0 0 9px;
+}
+
+.pdf-bullet,
+.pdf-number {
+  display: flex;
+
+  gap: 9px;
+
+  margin: 0 0 8px;
+
+  line-height: 1.65;
+}
+
+.pdf-bullet > span,
+.pdf-number > span {
+  flex-shrink: 0;
+
+  color: #a8752f;
+
+  font-weight: 700;
+}
+
+.pdf-space {
+  height: 4px;
+}
+
+.pdf-images {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, 1fr);
+
+  gap: 14px;
+
+  margin-top: 10px;
+}
+
+.pdf-image-card {
+  margin: 0;
+
+  border: 1px solid #e5e7eb;
+
+  border-radius: 8px;
+
+  overflow: hidden;
+
+  background: #f9fafb;
+
+  page-break-inside: avoid;
+}
+
+.pdf-image-card img {
+  display: block;
+
+  width: 100%;
+
+  max-height: 310px;
+
+  object-fit: contain;
+
+  background: #f3f4f6;
+}
+
+.pdf-image-card figcaption {
+  padding: 7px 9px;
+
+  font-size: 9px;
+
+  color: #6b7280;
+
+  border-top: 1px solid #e5e7eb;
+}
+
+.pdf-footer {
+  margin-top: 40px;
+
+  padding-top: 12px;
+
+  border-top: 1px solid #e5e7eb;
+
+  display: flex;
+
+  justify-content: space-between;
+
+  font-size: 8.5px;
+
+  color: #9ca3af;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="pdf-report">
+
+  <header class="pdf-header">
+
+    <div class="pdf-brand">
+      TANYA AI · INSIGHT REPORT
+    </div>
+
+    <h1 class="pdf-title">
+      Laporan Insight Analisis
+    </h1>
+
+    <div class="pdf-subtitle">
+      Analisis berbasis percakapan dan data yang tersedia
+    </div>
+
+    <div class="pdf-meta">
+
+      <span>
+        ${dateText}
+      </span>
+
+      <span>
+        ${timeText} WIB
+      </span>
+
+    </div>
+
+  </header>
+
+  ${imageHTML}
+
+  ${sectionsHTML}
+
+  <footer class="pdf-footer">
+
+    <span>
+      Tanya AI
+    </span>
+
+    <span>
+      Generated ${dateText}
+    </span>
+
+  </footer>
+
+</div>
+
+</body>
+</html>
+`;
+}
+
+
+// =========================================================
+// EXPORT PDF
+// =========================================================
+
+async function exportInsightPDF() {
+
+  const insight =
+    getLatestAIInsight();
+
+  if (!insight) {
+
+    alert(
+      'Belum ada hasil analisis AI.'
+    );
+
+    return;
+  }
+
+  if (
+    typeof window.html2canvas !== 'function' ||
+    !window.jspdf ||
+    typeof window.jspdf.jsPDF !== 'function'
+  ) {
+    console.error('PDF Library:', {
+      html2canvas: typeof window.html2canvas,
+      jspdf: window.jspdf
+    });
+  
+    alert(
+      'Library PDF gagal dimuat. Buka F12 → Console untuk melihat detail error.'
+    );
+  
+    return;
+  }
+
+  const button =
+    document.getElementById(
+      'export-pdf-btn'
+    );
+
+  if (button) {
+
+    button.disabled = true;
+
+    button.innerHTML = `
+      <span>...</span>
+      <span>Menyiapkan</span>
+    `;
+  }
+
+  let report;
+
+  try {
+
+    report =
+      document.createElement(
+        'div'
+      );
+
+    report.innerHTML =
+      buildInsightReportHTML();
+
+    report.style.position =
+      'fixed';
+
+    report.style.left =
+      '-100000px';
+
+    report.style.top =
+      '0';
+
+    report.style.width =
+      '794px';
+
+    report.style.background =
+      '#ffffff';
+
+    report.style.zIndex =
+      '-1';
+
+    document.body.appendChild(
+      report
+    );
+
+    const canvas =
+      await html2canvas(
+        report.querySelector(
+          '.pdf-report'
+        ),
+        {
+          scale: 2,
+          useCORS: true,
+          backgroundColor:
+            '#ffffff'
+        }
+      );
+
+    const {
+      jsPDF
+    } =
+      window.jspdf;
+
+    const pdf =
+      new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
+      });
+
+    const pageWidth =
+      pdf.internal.pageSize.getWidth();
+
+    const pageHeight =
+      pdf.internal.pageSize.getHeight();
+
+    const margin =
+      8;
+
+    const contentWidth =
+      pageWidth -
+      margin * 2;
+
+    const imageHeight =
+      canvas.height *
+      contentWidth /
+      canvas.width;
+
+    let heightLeft =
+      imageHeight;
+
+    let position =
+      margin;
+
+    const imageData =
+      canvas.toDataURL(
+        'image/jpeg',
+        0.92
+      );
+
+    pdf.addImage(
+      imageData,
+      'JPEG',
+      margin,
+      position,
+      contentWidth,
+      imageHeight,
+      undefined,
+      'FAST'
+    );
+
+    heightLeft -=
+      pageHeight -
+      margin * 2;
+
+    while(heightLeft > 0){
+
+      position =
+        margin -
+        (
+          imageHeight -
+          heightLeft
+        );
+
+      pdf.addPage();
+
+      pdf.addImage(
+        imageData,
+        'JPEG',
+        margin,
+        position,
+        contentWidth,
+        imageHeight,
+        undefined,
+        'FAST'
+      );
+
+      heightLeft -=
+        pageHeight -
+        margin * 2;
+    }
+
+    const filename =
+      'tanya-insight-' +
+      new Date()
+        .toISOString()
+        .slice(0, 10) +
+      '.pdf';
+
+    pdf.save(
+      filename
+    );
+
+  }catch(error){
+
+    console.error(
+      'PDF export error:',
+      error
+    );
+
+    alert(
+      'Gagal membuat PDF. Coba refresh halaman lalu ulangi.'
+    );
+
+  }finally{
+
+    if(report){
+      report.remove();
+    }
+
+    if(button){
+
+      button.disabled =
+        false;
+
+      button.innerHTML = `
+        <span>▣</span>
+        <span class="export-pdf-label">PDF</span>
+      `;
+    }
+
+  }
+}
+
+
+// =========================================================
+// AKTIFKAN TOMBOL PDF
+// =========================================================
+
+if(
+  document.readyState === 'loading'
+){
+
+  document.addEventListener(
+    'DOMContentLoaded',
+    initPdfExport
+  );
+
+}else{
+
+  initPdfExport();
+
+}
