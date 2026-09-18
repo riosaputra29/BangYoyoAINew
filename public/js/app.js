@@ -1,4 +1,3 @@
-
 // =========================================================
 // KONFIGURASI
 // =========================================================
@@ -1920,6 +1919,14 @@ function buildCodeBlockHtml(
       ? lang.toLowerCase()
       : 'teks';
 
+  // Nama bahasa untuk highlight.js harus berupa identifier
+  // yang valid (huruf/angka/+/-/#), fallback ke "plaintext"
+  // kalau AI tidak menyertakan bahasa (mis. blok ``` polos).
+  const hljsLang =
+    lang && /^[a-zA-Z0-9_+#.-]+$/.test(lang)
+      ? lang.toLowerCase()
+      : 'plaintext';
+
 
   return (
 
@@ -1943,7 +1950,11 @@ function buildCodeBlockHtml(
 
       '</div>' +
 
-      '<pre><code>' +
+      '<pre><code class="hljs language-' +
+
+        escapeHtml(hljsLang) +
+
+        '">' +
 
         code +
 
@@ -1952,6 +1963,44 @@ function buildCodeBlockHtml(
     '</div>'
 
   );
+
+}
+
+
+// =========================================================
+// SYNTAX HIGHLIGHTING (VS CODE STYLE)
+// =========================================================
+
+function highlightCodeBlocks(container){
+
+  if(
+    !container ||
+    typeof hljs === 'undefined'
+  ){
+    return;
+  }
+
+  const blocks =
+    container.querySelectorAll(
+      'pre code:not([data-highlighted])'
+    );
+
+  blocks.forEach(function(block){
+
+    try{
+
+      hljs.highlightElement(block);
+
+    }catch(err){
+
+      console.error(
+        'Gagal menerapkan syntax highlighting:',
+        err
+      );
+
+    }
+
+  });
 
 }
 
@@ -2954,6 +3003,7 @@ async function loadChatHistory(conversationId){
 
       if(role === 'ai'){
         bubble.innerHTML = renderMarkdown(msg.content);
+        highlightCodeBlocks(bubble);
       }else{
         const span = document.createElement('span');
         span.textContent = msg.content;
@@ -3925,6 +3975,12 @@ async function processVoiceAudio(
 
         aiBubble.textContent =
           answer;
+
+      }else{
+
+        highlightCodeBlocks(
+          aiBubble
+        );
 
       }
 
@@ -4931,6 +4987,10 @@ async function sendMessage(){
           aiBubble.innerHTML =
             renderMarkdown(
               fullText
+            );
+
+            highlightCodeBlocks(
+              aiBubble
             );
 
             if(
@@ -6590,4 +6650,3 @@ if(
   initPdfExport();
 
 }
-
