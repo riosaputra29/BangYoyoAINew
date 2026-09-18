@@ -1310,23 +1310,23 @@ export default async function handler(
     );
   }
 
+     // =======================================================
+    // SAVE ASSISTANT + EXTRACT MEMORY
     // =======================================================
-  // SAVE ASSISTANT
-  // =======================================================
-
-  if (fullReply.trim()) {
-    await saveChatMessage(...)
+  
+    // SAVE ASSISTANT + EXTRACT MEMORY — jalan paralel, tidak menahan response
+    if (fullReply.trim()) {
+      saveChatMessage(userId, convId, "assistant", fullReply.trim())
+        .catch((err) => console.error("Gagal simpan pesan assistant:", err));
+    }
+  
+    if (lastUserMessage && typeof lastUserMessage.content === "string") {
+      extractAndSaveFacts(userId, lastUserMessage.content)
+        .catch((err) => console.error("Gagal ekstrak memory:", err));
+    }
+  
+    res.end();
   }
-
-  // =======================================================
-  // EXTRACT MEMORY
-  // =======================================================
-
-  if (lastUserMessage && ...) {
-    await extractAndSaveFacts(...)
-  }
-
-  res.end();
 
   // =======================================================
   // EXTRACT MEMORY
