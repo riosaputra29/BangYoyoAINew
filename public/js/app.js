@@ -1,6 +1,11 @@
 // =========================================================
 // KONFIGURASI
 // =========================================================
+const TANYA_APP_URL = 'https://bangyoyo.vercel.app/';
+
+const TANYA_QR_CODE_URL =
+  'https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=' +
+  encodeURIComponent(TANYA_APP_URL);
 
 const GOOGLE_CLIENT_ID =
   "475879074184-5fu3p4oci9o3rbl8khtnv2260k6k7bc2.apps.googleusercontent.com";
@@ -6762,6 +6767,44 @@ body {
   color: #9ca3af;
 }
 
+.pdf-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.pdf-footer-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pdf-qr-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.pdf-qr-box img {
+  width: 64px;
+  height: 64px;
+  display: block;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 4px;
+  background: #ffffff;
+}
+
+.pdf-qr-box span {
+  font-size: 7.5px;
+  color: #9ca3af;
+  text-align: center;
+  white-space: nowrap;
+}
+
+
+
 </style>
 
 </head>
@@ -6802,15 +6845,26 @@ body {
 
   ${sectionsHTML}
 
-  <footer class="pdf-footer">
+    <footer class="pdf-footer">
 
-    <span>
-      Tanya AI
-    </span>
+    <div class="pdf-footer-text">
+      <span>
+        Tanya AI
+      </span>
 
-    <span>
-      Generated ${dateText}
-    </span>
+      <span>
+        Generated ${dateText}
+      </span>
+    </div>
+
+    <div class="pdf-qr-box">
+      <img
+        src="${TANYA_QR_CODE_URL}"
+        alt="QR Tanya AI"
+        crossorigin="anonymous"
+      >
+      <span>Scan untuk buka Tanya AI</span>
+    </div>
 
   </footer>
 
