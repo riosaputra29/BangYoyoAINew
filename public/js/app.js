@@ -6753,24 +6753,13 @@ body {
 
 .pdf-footer {
   margin-top: 40px;
-
   padding-top: 12px;
-
   border-top: 1px solid #e5e7eb;
-
-  display: flex;
-
-  justify-content: space-between;
-
-  font-size: 8.5px;
-
-  color: #9ca3af;
-}
-
-.pdf-footer {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
+  font-size: 8.5px;
+  color: #9ca3af;
 }
 
 .pdf-footer-text {
