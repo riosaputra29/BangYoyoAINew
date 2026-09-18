@@ -1,5 +1,26 @@
 :root {
-  /* Light */
+ 
+  --bg: #14161b;
+  --surface: #1c1f26;
+  --surface-2: #262932;
+  --border: #33363f;
+  --text: #f1f0ec;
+  --text-muted: #8f929e;
+
+  --accent: #c99b4a;
+  --accent-light: #e8c77a;
+  --accent-dark: #a8752f;
+  --accent-dim: rgba(201, 155, 74, 0.14);
+  --accent-ink: #171410;
+
+  --sidebar-width: 276px;
+  --sidebar-surface: #17191f;
+  --sidebar-hover: rgba(255, 255, 255, 0.045);
+  --sidebar-active: rgba(201, 155, 74, 0.12);
+  --sidebar-border: rgba(255, 255, 255, 0.075);
+}
+
+ /* Light */
   /* =========================================================
    LIGHT THEME OVERRIDE
    ========================================================= */
@@ -51,25 +72,6 @@
   color: var(--text);
 }
   /* Light */
-  --bg: #14161b;
-  --surface: #1c1f26;
-  --surface-2: #262932;
-  --border: #33363f;
-  --text: #f1f0ec;
-  --text-muted: #8f929e;
-
-  --accent: #c99b4a;
-  --accent-light: #e8c77a;
-  --accent-dark: #a8752f;
-  --accent-dim: rgba(201, 155, 74, 0.14);
-  --accent-ink: #171410;
-
-  --sidebar-width: 276px;
-  --sidebar-surface: #17191f;
-  --sidebar-hover: rgba(255, 255, 255, 0.045);
-  --sidebar-active: rgba(201, 155, 74, 0.12);
-  --sidebar-border: rgba(255, 255, 255, 0.075);
-}
 
 /* =========================================================
    RESET & GLOBAL
