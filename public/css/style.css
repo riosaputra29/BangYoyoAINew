@@ -1583,119 +1583,183 @@ header.is-scrolled {
    CODE BLOCK
    ========================================================= */
 
-.code-block {
-  background: var(--surface-2);
+/* =========================================================
+   TANYA AI — VS CODE CODE BLOCK
+   ========================================================= */
 
-  border: 1px solid var(--border);
+.code-block{
+  width:100%;
+  margin:18px 0;
 
-  border-radius: 10px;
+  overflow:hidden;
 
-  overflow: hidden;
+  background:#0d1117;
 
-  margin: 10px 0;
+  border:1px solid #30363d;
 
-  max-width: 100%;
+  border-radius:12px;
+
+  box-shadow:
+    0 8px 24px rgba(0,0,0,.20);
 }
 
-.bubble .code-block:first-child {
-  margin-top: 0;
+
+/* HEADER */
+
+.code-block-header{
+  height:42px;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+
+  padding:0 10px 0 14px;
+
+  background:#161b22;
+
+  border-bottom:1px solid #30363d;
 }
 
-.bubble .code-block:last-child {
-  margin-bottom: 0;
+
+/* LANGUAGE */
+
+.code-lang{
+  font-family:
+    Inter,
+    system-ui,
+    sans-serif;
+
+  font-size:12px;
+
+  font-weight:600;
+
+  color:#8b949e;
+
+  text-transform:lowercase;
 }
 
-.code-block-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 
-  padding: 6px 8px 6px 12px;
+/* COPY */
 
-  background: rgba(255, 255, 255, 0.02);
+.code-copy-btn{
+  display:flex;
+  align-items:center;
+  gap:6px;
 
-  border-bottom: 1px solid var(--border);
+  height:30px;
+
+  padding:0 9px;
+
+  border:0;
+
+  border-radius:6px;
+
+  background:transparent;
+
+  color:#8b949e;
+
+  font-size:12px;
+
+  cursor:pointer;
+
+  transition:
+    background .15s ease,
+    color .15s ease;
 }
 
-.code-block-header .code-lang {
-  font-size: 0.7rem;
+.code-copy-btn:hover{
+  background:#21262d;
 
-  color: var(--text-muted);
-
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  color:#f0f6fc;
 }
 
-.code-copy-btn {
-  background: none;
-
-  border: 1px solid var(--border);
-
-  color: var(--text-muted);
-
-  padding: 4px 10px;
-
-  border-radius: 6px;
-
-  font-size: 0.72rem;
-
-  cursor: pointer;
-
-  display: flex;
-  align-items: center;
-
-  gap: 5px;
+.code-copy-btn svg{
+  width:14px;
+  height:14px;
 }
 
-.code-copy-btn:hover {
-  border-color: var(--accent);
-  color: var(--text);
+
+/* CODE */
+
+.code-block pre{
+  margin:0 !important;
+
+  padding:16px 18px !important;
+
+  overflow-x:auto;
+
+  background:#0d1117 !important;
+
+  border:0 !important;
+
+  border-radius:0 !important;
+
+  -webkit-overflow-scrolling:touch;
 }
 
-.code-copy-btn.copied {
-  color: var(--accent);
-  border-color: var(--accent);
-}
 
-.code-copy-btn svg {
-  width: 12px;
-  height: 12px;
-}
+/* FONT */
 
-.code-block pre {
-  margin: 0;
+.code-block pre code{
+  display:block;
 
-  padding: 12px 14px;
+  width:max-content;
 
-  overflow-x: auto;
+  min-width:100%;
+
+  padding:0 !important;
+
+  background:transparent !important;
 
   font-family:
-    "SFMono-Regular",
+    "JetBrains Mono",
+    "Fira Code",
     Consolas,
-    "Liberation Mono",
+    Monaco,
     monospace;
 
-  font-size: 0.83rem;
-  line-height: 1.6;
+  font-size:13px;
 
-  color: var(--text);
+  line-height:1.65;
 
-  white-space: pre;
+  white-space:pre;
+
+  tab-size:2;
 }
 
-.code-block pre::-webkit-scrollbar {
-  height: 6px;
+
+/* HIGHLIGHT.JS */
+
+.code-block .hljs{
+  background:transparent !important;
 }
 
-.code-block pre::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 6px;
-}
 
-.code-block pre::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* MOBILE */
 
+@media(max-width:700px){
+
+  .code-block{
+    margin:14px 0;
+
+    border-radius:10px;
+  }
+
+  .code-block-header{
+    height:40px;
+  }
+
+  .code-block pre{
+    padding:14px !important;
+  }
+
+  .code-block pre code{
+    font-size:12px;
+
+    line-height:1.6;
+  }
+
+}
 /* =========================================================
    EXCEL DOWNLOAD
    ========================================================= */
