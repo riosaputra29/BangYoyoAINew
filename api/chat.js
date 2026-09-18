@@ -1310,7 +1310,7 @@ export default async function handler(
     );
   }
 
-     // =======================================================
+          // =======================================================
     // SAVE ASSISTANT + EXTRACT MEMORY
     // =======================================================
   
@@ -1327,29 +1327,3 @@ export default async function handler(
   
     res.end();
   }
-
-  // =======================================================
-  // EXTRACT MEMORY
-  // =======================================================
-
-  if (
-    lastUserMessage &&
-    typeof lastUserMessage.content ===
-      "string"
-  ) {
-    console.log(
-      "Mulai ekstrak memory..."
-    );
-
-    await extractAndSaveFacts(
-      userId,
-      lastUserMessage.content
-    );
-  }
-
-  // =======================================================
-  // END
-  // =======================================================
-
-  res.end();
-}
