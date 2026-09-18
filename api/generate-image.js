@@ -7,12 +7,12 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // Minta durasi function lebih panjang ke Vercel (generate gambar
-// bisa lebih lama dari chat text biasa). Di plan Hobby, Vercel
-// akan otomatis membatasi ke maksimum yang diizinkan (10 detik)
-// meski angka ini diminta lebih besar — untuk waktu lebih panjang
-// perlu upgrade ke plan Pro.
+// bisa lebih lama dari chat text biasa). PENTING: di plan Hobby
+// (gratis), Vercel MENOLAK deploy kalau nilai ini lebih besar dari
+// 10 — bukan cuma membatasi otomatis. Kalau kamu sudah upgrade ke
+// plan Pro, angka ini boleh dinaikkan lagi (misal ke 30 atau 60).
 export const config = {
-  maxDuration: 30
+  maxDuration: 10
 };
 
 /* =========================================================
@@ -165,12 +165,13 @@ export default async function handler(req, res) {
      yang jauh lebih cepat.
   ======================================================= */
 
-  // Vercel Hobby plan membatasi function timeout ~10 detik.
-  // Kalau flux belum selesai dalam waktu ini, batalkan dan
-  // langsung coba turbo, daripada function keburu di-kill
-  // dan user cuma dapat error generik.
-  const FLUX_TIMEOUT_MS = 8000;
-  const TURBO_TIMEOUT_MS = 15000;
+  // Vercel Hobby plan MEMBATASI TOTAL EKSEKUSI FUNCTION ke 10 detik
+  // (lihat config.maxDuration di atas). Auth check + overhead lain
+  // butuh sedikit waktu, jadi flux+turbo digabung harus di bawah
+  // itu. Kalau flux belum selesai dalam 5 detik, langsung coba
+  // turbo dengan sisa waktu ~3.5 detik.
+  const FLUX_TIMEOUT_MS = 5000;
+  const TURBO_TIMEOUT_MS = 3500;
 
   async function fetchPollinationsImage(model, timeoutMs) {
     const seed = Math.floor(Math.random() * 1_000_000);
