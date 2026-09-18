@@ -177,6 +177,7 @@ function showChatScreen(){
   document.getElementById('chat-screen').style.display =
     'flex';
   initPdfExport();
+  initThemeToggle();
 }
 
 
@@ -291,6 +292,70 @@ function initMagicLink(){
 // =========================================================
 // WINDOW LOAD
 // =========================================================
+// =========================================================
+// THEME TOGGLE (DARK / LIGHT)
+// =========================================================
+
+const THEME_STORAGE_KEY = 'tanya_theme';
+
+function applyTheme(theme){
+  if(theme === 'light'){
+    document.documentElement.setAttribute('data-theme', 'light');
+  }else{
+    document.documentElement.removeAttribute('data-theme');
+  }
+}
+
+function getSavedTheme(){
+  return localStorage.getItem(THEME_STORAGE_KEY) || 'dark';
+}
+
+function toggleTheme(){
+  const current = getSavedTheme();
+  const next = current === 'light' ? 'dark' : 'light';
+
+  localStorage.setItem(THEME_STORAGE_KEY, next);
+  applyTheme(next);
+}
+
+function initThemeToggle(){
+
+  applyTheme(getSavedTheme());
+
+  const header = document.querySelector('#chat-screen header');
+  if(!header) return;
+
+  if(document.getElementById('theme-toggle-btn')) return;
+
+  const userMenu = document.getElementById('user-menu');
+
+  const button = document.createElement('button');
+  button.id = 'theme-toggle-btn';
+  button.type = 'button';
+  button.title = 'Ganti tema';
+
+  button.innerHTML = `
+    <svg class="icon-sun" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+    </svg>
+    <svg class="icon-moon" viewBox="0 0 24 24">
+      <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+    </svg>
+  `;
+
+  button.addEventListener('click', toggleTheme);
+
+  if(userMenu){
+    userMenu.insertBefore(button, userMenu.firstChild);
+  }else{
+    header.appendChild(button);
+  }
+}
+
+// Terapkan tema sedini mungkin (sebelum chat screen tampil)
+// supaya tidak ada "flash" warna dark sebelum berganti ke light.
+applyTheme(getSavedTheme());
 
 window.onload = function(){
 
