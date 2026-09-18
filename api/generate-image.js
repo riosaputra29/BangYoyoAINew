@@ -6,6 +6,15 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
+// Minta durasi function lebih panjang ke Vercel (generate gambar
+// bisa lebih lama dari chat text biasa). Di plan Hobby, Vercel
+// akan otomatis membatasi ke maksimum yang diizinkan (10 detik)
+// meski angka ini diminta lebih besar — untuk waktu lebih panjang
+// perlu upgrade ke plan Pro.
+export const config = {
+  maxDuration: 30
+};
+
 /* =========================================================
    AUTH
    (Duplikat dari chat.js supaya endpoint ini mandiri. Idealnya
@@ -151,48 +160,99 @@ export default async function handler(req, res) {
      POLLINATIONS.AI — TEXT TO IMAGE GRATIS
      Tidak butuh API key, tidak ada rate limit ketat.
      model=flux memberi hasil lebih detail & konsisten
-     dibanding model default "turbo", termasuk untuk gaya anime.
+     (termasuk untuk gaya anime), tapi kadang lebih lambat.
+     Kalau flux timeout, fallback otomatis ke model=turbo
+     yang jauh lebih cepat.
   ======================================================= */
 
-  const seed = Math.floor(Math.random() * 1_000_000);
+  // Vercel Hobby plan membatasi function timeout ~10 detik.
+  // Kalau flux belum selesai dalam waktu ini, batalkan dan
+  // langsung coba turbo, daripada function keburu di-kill
+  // dan user cuma dapat error generik.
+  const FLUX_TIMEOUT_MS = 8000;
+  const TURBO_TIMEOUT_MS = 15000;
 
-  const imageUrl =
-    "https://image.pollinations.ai/prompt/" +
-    encodeURIComponent(finalPrompt) +
-    `?width=768&height=768&model=flux&nologo=true&seed=${seed}`;
+  async function fetchPollinationsImage(model, timeoutMs) {
+    const seed = Math.floor(Math.random() * 1_000_000);
+
+    const imageUrl =
+      "https://image.pollinations.ai/prompt/" +
+      encodeURIComponent(finalPrompt) +
+      `?width=768&height=768&model=${model}&nologo=true&seed=${seed}`;
+
+    const controller = new AbortController();
+
+    const timer = setTimeout(
+      () => controller.abort(),
+      timeoutMs
+    );
+
+    try {
+      const imageResponse = await fetch(imageUrl, {
+        signal: controller.signal
+      });
+
+      clearTimeout(timer);
+
+      if (!imageResponse.ok) {
+        const errorText = await imageResponse.text().catch(() => "");
+
+        console.error(
+          `Pollinations (${model}) error:`,
+          imageResponse.status,
+          errorText
+        );
+
+        throw new Error(
+          `Provider gambar (${model}) membalas status ${imageResponse.status}.`
+        );
+      }
+
+      const contentType =
+        imageResponse.headers.get("content-type") || "image/jpeg";
+
+      const arrayBuffer = await imageResponse.arrayBuffer();
+
+      const base64 = Buffer.from(arrayBuffer).toString("base64");
+
+      return `data:${contentType};base64,${base64}`;
+    } catch (err) {
+      clearTimeout(timer);
+
+      if (err.name === "AbortError") {
+        console.error(`Pollinations (${model}) timeout setelah ${timeoutMs}ms`);
+
+        throw new Error(`Provider gambar (${model}) timeout.`);
+      }
+
+      throw err;
+    }
+  }
 
   try {
-    const imageResponse = await fetch(imageUrl);
+    let dataUrl;
 
-    if (!imageResponse.ok) {
-      const errorText = await imageResponse.text().catch(() => "");
-
-      console.error(
-        "Pollinations error:",
-        imageResponse.status,
-        errorText
+    try {
+      // Coba model berkualitas tinggi dulu.
+      dataUrl = await fetchPollinationsImage("flux", FLUX_TIMEOUT_MS);
+    } catch (fluxErr) {
+      console.log(
+        "Flux gagal/timeout, fallback ke turbo:",
+        fluxErr.message
       );
 
-      return res.status(502).json({
-        error: "Gagal membuat gambar dari provider. Coba lagi."
-      });
+      // Fallback ke model yang jauh lebih cepat.
+      dataUrl = await fetchPollinationsImage("turbo", TURBO_TIMEOUT_MS);
     }
-
-    const contentType =
-      imageResponse.headers.get("content-type") || "image/jpeg";
-
-    const arrayBuffer = await imageResponse.arrayBuffer();
-
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
-
-    const dataUrl = `data:${contentType};base64,${base64}`;
 
     return res.status(200).json({ image: dataUrl });
   } catch (err) {
-    console.error("Generate image error:", err);
+    console.error("Generate image error (semua model gagal):", err);
 
     return res.status(502).json({
-      error: "Tidak dapat menghubungi provider gambar."
+      error:
+        "Gagal membuat gambar: " +
+        (err.message || "provider tidak merespons. Coba lagi.")
     });
   }
 }
