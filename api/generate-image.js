@@ -89,15 +89,39 @@ const ANIME_KEYWORDS = [
   "waifu",
   "shounen",
   "shoujo",
-  "kawaii"
+  "kawaii",
+  "bishoujo",
+  "moe"
 ];
 
 // Deskripsi tambahan yang disisipkan ke prompt supaya hasil
 // gambar lebih konsisten bergaya anime (bukan realistis/3D).
 const ANIME_STYLE_BOOST =
   "anime style, japanese anime art, cel shading, clean line art, " +
-  "vibrant colors, studio quality, highly detailed, official art";
+  "vibrant colors, studio quality, highly detailed, official art, " +
+  "sharp focus, anime key visual, detailed eyes, " +
+  "trending on pixiv, masterpiece, best quality";
 
+// Negative prompt untuk mencegah hasil melenceng ke gaya realistis/3D
+const ANIME_NEGATIVE_PROMPT =
+  "photorealistic, realistic, 3d render, 3d model, western comic, " +
+  "cgi, low quality, worst quality, blurry, deformed, " +
+  "bad anatomy, extra limbs, watermark, signature, text";
+
+// Fungsi untuk menggabungkan prompt user dengan style boost
+function buildAnimePrompt(userPrompt) {
+  return `${userPrompt}, ${ANIME_STYLE_BOOST}`;
+}
+
+// Contoh pemakaian untuk menghasilkan gambar seperti karakter gadis
+// berambut pink dengan seragam sailor, bunga sakura berguguran
+const examplePrompt = buildAnimePrompt(
+  "1girl, pink hair, twin ponytails, ahoge, purple sparkling eyes, " +
+  "flower hair ornaments, japanese school sailor uniform, " +
+  "navy pleated skirt, reaching hand towards viewer, dynamic pose, " +
+  "open mouth, cherry blossom petals falling, wind blowing hair, " +
+  "gradient blue purple sky background"
+);
 function isAnimeRequest(prompt) {
   const t = prompt.toLowerCase();
 
