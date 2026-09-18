@@ -1268,6 +1268,51 @@ function formatBytes(
 // EKSTRAK TEKS PDF (pdf.js)
 // =========================================================
 
+// =========================================================
+// COMPRESS IMAGE SEBELUM DIKIRIM (HEMAT TOKEN VISION)
+// =========================================================
+
+const IMAGE_MAX_DIMENSION = 1280;
+const IMAGE_JPEG_QUALITY = 0.82;
+
+function compressImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      img.onload = () => {
+        let { width, height } = img;
+
+        // Skip resize kalau gambar sudah cukup kecil
+        if (width <= IMAGE_MAX_DIMENSION && height <= IMAGE_MAX_DIMENSION) {
+          resolve(reader.result);
+          return;
+        }
+
+        const scale = IMAGE_MAX_DIMENSION / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        resolve(canvas.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY));
+      };
+
+      img.onerror = () => reject(new Error('Gagal memuat gambar untuk kompresi.'));
+      img.src = reader.result;
+    };
+
+    reader.onerror = () => reject(new Error('Gagal membaca file gambar.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function extractPdfText(arrayBuffer){
 
   if(!window.pdfjsLib){
@@ -1296,6 +1341,8 @@ async function extractPdfText(arrayBuffer){
   return text.trim();
 
 }
+
+
 
 
 // =========================================================
