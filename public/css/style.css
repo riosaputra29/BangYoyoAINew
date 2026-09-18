@@ -1,4 +1,56 @@
 :root {
+  /* Light */
+  /* =========================================================
+   LIGHT THEME OVERRIDE
+   ========================================================= */
+
+[data-theme="light"] {
+  --bg: #f7f5f1;
+  --surface: #ffffff;
+  --surface-2: #f0ece3;
+  --border: #e2ddd0;
+  --text: #201d18;
+  --text-muted: #7a756a;
+
+  --accent: #b8823a;
+  --accent-light: #d9a857;
+  --accent-dark: #8f6526;
+  --accent-dim: rgba(184, 130, 58, 0.12);
+  --accent-ink: #fffaf0;
+
+  --sidebar-surface: #f0ece3;
+  --sidebar-hover: rgba(0, 0, 0, 0.04);
+  --sidebar-active: rgba(184, 130, 58, 0.12);
+  --sidebar-border: rgba(0, 0, 0, 0.08);
+}
+
+/* Beberapa warna masih ditulis manual (bukan var), perbaiki khusus light mode */
+
+[data-theme="light"] .login-story {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(184, 130, 58, 0.10), transparent 38%),
+    linear-gradient(145deg, #fbf9f5 0%, #f2ede4 72%);
+}
+
+[data-theme="light"] #magic-email {
+  background: #ffffff;
+}
+
+[data-theme="light"] .login-card {
+  background: rgba(255, 255, 255, 0.82);
+}
+
+[data-theme="light"] #send-btn,
+[data-theme="light"] #start-voice-btn.speaking {
+  background: #26241f;
+  color: #f4f4f4;
+}
+
+[data-theme="light"] ::selection {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+  /* Light */
   --bg: #14161b;
   --surface: #1c1f26;
   --surface-2: #262932;
@@ -2752,6 +2804,52 @@ body.sidebar-resizing #sidebar::before {
 /* =========================================================
    EXPORT PDF BUTTON
    ========================================================= */
+/* =========================================================
+   THEME TOGGLE BUTTON
+   ========================================================= */
+
+#theme-toggle-btn {
+  height: 32px;
+  width: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.15s ease;
+}
+
+#theme-toggle-btn:hover {
+  background: rgba(201, 155, 74, 0.1);
+  border-color: var(--accent);
+  color: var(--accent-light);
+}
+
+#theme-toggle-btn:active {
+  transform: scale(0.94);
+}
+
+#theme-toggle-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#theme-toggle-btn .icon-moon { display: none; }
+
+[data-theme="light"] #theme-toggle-btn .icon-sun { display: none; }
+[data-theme="light"] #theme-toggle-btn .icon-moon { display: block; }
 
 #export-pdf-btn {
   height: 32px;
