@@ -21,15 +21,16 @@ const GROQ_API_KEYS = [
   process.env.GROQ_KEY_4
 ].filter(Boolean);
 
-// ROTASI KEY — round-robin murni:
-// - nextKeyIndex maju otomatis setiap request SUKSES, jadi ke-4 key
-//   kepakai merata seiring waktu (bukan selalu mulai dari key yang sama).
-// - invalidKeyIndices menandai key yang pasti mati (401), supaya tidak
-//   dicoba lagi di request-request berikutnya (hemat retry, tidak error).
+// =========================================================
+// ROTASI KEY
+// =========================================================
+
 let nextKeyIndex = 0;
+
 const invalidKeyIndices = new Set();
 
-const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+const MODEL =
+  process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 const VISION_MODEL = "qwen/qwen3.8-27b";
 
@@ -41,11 +42,12 @@ const MAX_DOCS_KEPT_FULL = 1;
 const MAX_IMAGE_MSGS_KEPT_FULL = 1;
 const MAX_MEMORY_CHARS_IN_PROMPT = 800;
 
-const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+const googleClient =
+  new OAuth2Client(GOOGLE_CLIENT_ID);
 
-/* =========================================================
-   GOOGLE AUTH
-========================================================= */
+// =========================================================
+// GOOGLE AUTH
+// =========================================================
 
 async function verifyGoogleToken(idToken) {
   const ticket = await googleClient.verifyIdToken({
@@ -67,9 +69,9 @@ async function verifyGoogleToken(idToken) {
   };
 }
 
-/* =========================================================
-   MAGIC LINK TOKEN
-========================================================= */
+// =========================================================
+// MAGIC LINK TOKEN
+// =========================================================
 
 async function verifyMagicToken(token) {
   const data = await verifyTanyaToken(token);
@@ -90,9 +92,9 @@ async function verifyMagicToken(token) {
   };
 }
 
-/* =========================================================
-   AUTH TOKEN
-========================================================= */
+// =========================================================
+// AUTH TOKEN
+// =========================================================
 
 async function verifyAuthToken(token) {
   if (!token) {
@@ -102,15 +104,17 @@ async function verifyAuthToken(token) {
   try {
     return await verifyGoogleToken(token);
   } catch (googleError) {
-    console.log("Bukan Google token, mencoba Magic Link...");
+    console.log(
+      "Bukan Google token, mencoba Magic Link..."
+    );
   }
 
   return await verifyMagicToken(token);
 }
 
-/* =========================================================
-   IMAGE
-========================================================= */
+// =========================================================
+// IMAGE
+// =========================================================
 
 function messageHasImage(message) {
   if (!message || !Array.isArray(message.content)) {
@@ -122,11 +126,14 @@ function messageHasImage(message) {
   );
 }
 
-/* =========================================================
-   CAP IMAGE
-========================================================= */
+// =========================================================
+// CAP IMAGE
+// =========================================================
 
-function capImagesPerRequest(messages, maxImages = MAX_IMAGES_PER_REQUEST) {
+function capImagesPerRequest(
+  messages,
+  maxImages = MAX_IMAGES_PER_REQUEST
+) {
   let imageCount = 0;
 
   const reversed = [...messages].reverse();
@@ -139,171 +146,392 @@ function capImagesPerRequest(messages, maxImages = MAX_IMAGES_PER_REQUEST) {
     const newContent = message.content.filter((part) => {
       if (part && part.type === "image_url") {
         imageCount++;
+
         return imageCount <= maxImages;
       }
+
       return true;
     });
 
-    return { ...message, content: newContent };
+    return {
+      ...message,
+      content: newContent
+    };
   });
 
   return capped.reverse();
 }
 
-/* =========================================================
-   SLEEP
-========================================================= */
+// =========================================================
+// PARSE RETRY-AFTER
+// =========================================================
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function parseRetryAfterSeconds(
+  response,
+  errorText = ""
+) {
+  // 1. Header Retry-After
+  const retryAfterHeader =
+    response?.headers?.get("retry-after");
+
+  if (retryAfterHeader) {
+    const value = retryAfterHeader.trim();
+
+    // Contoh:
+    // Retry-After: 5
+    const seconds = Number(value);
+
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.ceil(seconds);
+    }
+
+    // Retry-After bisa berupa HTTP date
+    const retryDate = Date.parse(value);
+
+    if (!Number.isNaN(retryDate)) {
+      const diff =
+        (retryDate - Date.now()) / 1000;
+
+      return Math.max(0, Math.ceil(diff));
+    }
+  }
+
+  // 2. Coba ambil dari body/error Groq
+  if (typeof errorText === "string") {
+    const patterns = [
+      /try again in\s+([\d.]+)\s*s/i,
+      /retry after\s+([\d.]+)\s*s/i,
+      /retry-after["']?\s*[:=]\s*([\d.]+)/i,
+      /in\s+([\d.]+)\s*seconds?/i
+    ];
+
+    for (const pattern of patterns) {
+      const match = errorText.match(pattern);
+
+      if (match) {
+        const seconds = Number(match[1]);
+
+        if (
+          Number.isFinite(seconds) &&
+          seconds >= 0
+        ) {
+          return Math.ceil(seconds);
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
-/* =========================================================
-   GROQ
-========================================================= */
+// =========================================================
+// GROQ
+// =========================================================
 
-// Pilih key berikutnya yang belum dicoba di request ini dan belum
-// ditandai invalid. Mulai dari nextKeyIndex supaya rotasi merata
-// antar-request, lalu putar sampai ketemu kandidat yang valid.
+// Pilih key berikutnya yang:
+// - belum dicoba pada request ini
+// - tidak ditandai invalid
 function pickKeyIndex(triedIndices) {
   const total = GROQ_API_KEYS.length;
 
   for (let step = 0; step < total; step++) {
-    const idx = (nextKeyIndex + step) % total;
+    const idx =
+      (nextKeyIndex + step) % total;
 
-    if (!triedIndices.has(idx) && !invalidKeyIndices.has(idx)) {
+    if (
+      !triedIndices.has(idx) &&
+      !invalidKeyIndices.has(idx)
+    ) {
       return idx;
     }
   }
 
-  return null; // semua key sudah dicoba atau invalid
+  return null;
 }
 
-function callGroq(messages, modelId, maxTokens, triedIndices = new Set()) {
+// =========================================================
+// CALL GROQ
+// =========================================================
+
+async function callGroq(
+  messages,
+  modelId,
+  maxTokens,
+  triedIndices = new Set()
+) {
   if (GROQ_API_KEYS.length === 0) {
-    return Promise.reject(
-      new Error("GROQ API key belum dikonfigurasi.")
+    throw new Error(
+      "GROQ API key belum dikonfigurasi."
     );
   }
 
   const keyIndex = pickKeyIndex(triedIndices);
 
   if (keyIndex === null) {
-    return Promise.reject(
-      new Error("Semua Groq API key gagal, invalid, atau kena rate limit.")
+    throw new Error(
+      "Semua Groq API key gagal, invalid, atau kena rate limit."
     );
   }
 
-  const apiKey = GROQ_API_KEYS[keyIndex];
+  const apiKey =
+    GROQ_API_KEYS[keyIndex];
 
-  console.log(`Chat pakai Groq key ${keyIndex + 1}/${GROQ_API_KEYS.length}`);
+  console.log(
+    `Chat pakai Groq key ${
+      keyIndex + 1
+    }/${GROQ_API_KEYS.length}`
+  );
 
-  return fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + apiKey
-    },
-    body: JSON.stringify({
-      model: modelId,
+  let response;
+
+  try {
+    response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization":
+            "Bearer " + apiKey
+        },
+
+        body: JSON.stringify({
+          model: modelId,
+          messages,
+          stream: true,
+          max_tokens: maxTokens,
+          temperature: 0.2
+        })
+      }
+    );
+  } catch (error) {
+    console.error(
+      `Groq network error key ${keyIndex + 1}:`,
+      error
+    );
+
+    const nextTried =
+      new Set(triedIndices);
+
+    nextTried.add(keyIndex);
+
+    if (
+      nextTried.size >=
+      GROQ_API_KEYS.length
+    ) {
+      throw error;
+    }
+
+    // LANGSUNG PINDAH KEY.
+    // Tidak ada sleep.
+    return callGroq(
       messages,
-      stream: true,
-      max_tokens: maxTokens,
-      temperature: 0.2
-    })
-  }).then(async (response) => {
-    /*
-     * 401 = API KEY INVALID -> tandai permanen, jangan dipakai lagi.
-     * 429 = RATE LIMIT -> coba key lain, kecuali rate limit yang
-     * disebabkan oleh request terlalu besar (bukan salah key).
-     */
+      modelId,
+      maxTokens,
+      nextTried
+    );
+  }
 
-    if (response.status === 401) {
-      console.log(`Groq key ${keyIndex + 1} invalid, ditandai skip.`);
+  // =======================================================
+  // 401 = API KEY INVALID
+  // =======================================================
 
-      invalidKeyIndices.add(keyIndex);
+  if (response.status === 401) {
+    console.log(
+      `Groq key ${
+        keyIndex + 1
+      } invalid, ditandai skip.`
+    );
 
-      const nextTried = new Set(triedIndices).add(keyIndex);
+    invalidKeyIndices.add(keyIndex);
 
-      if (nextTried.size >= GROQ_API_KEYS.length) {
-        return response;
-      }
+    const nextTried =
+      new Set(triedIndices);
 
-      await sleep(300 * nextTried.size);
+    nextTried.add(keyIndex);
 
-      return callGroq(messages, modelId, maxTokens, nextTried);
+    if (
+      nextTried.size >=
+      GROQ_API_KEYS.length
+    ) {
+      return response;
     }
 
-    if (response.status === 429) {
-      const errorText = await response.clone().text().catch(() => "");
+    // LANGSUNG PINDAH KEY
+    return callGroq(
+      messages,
+      modelId,
+      maxTokens,
+      nextTried
+    );
+  }
 
-      // Request terlalu besar: jangan pindah API key, key ini baik-baik saja.
-      if (
-        errorText.includes("output tokens per minute") ||
-        errorText.includes("Requested")
-      ) {
-        console.log("Groq: output token terlalu besar.");
-        return response;
-      }
+  // =======================================================
+  // 429 = RATE LIMIT
+  // =======================================================
 
-      // Rate limit biasa -> coba key lain.
-      console.log(`Groq key ${keyIndex + 1} terkena rate limit.`);
+  if (response.status === 429) {
+    const errorText =
+      await response
+        .clone()
+        .text()
+        .catch(() => "");
 
-      const nextTried = new Set(triedIndices).add(keyIndex);
+    const retryAfterSeconds =
+      parseRetryAfterSeconds(
+        response,
+        errorText
+      );
 
-      if (nextTried.size >= GROQ_API_KEYS.length) {
-        return response;
-      }
+    // -----------------------------------------------------
+    // REQUEST TERLALU BESAR
+    // -----------------------------------------------------
 
-      await sleep(300 * nextTried.size);
+    if (
+      errorText.includes(
+        "output tokens per minute"
+      ) ||
+      errorText.includes("Requested")
+    ) {
+      console.log(
+        "Groq: output token terlalu besar."
+      );
 
-      return callGroq(messages, modelId, maxTokens, nextTried);
+      return response;
     }
 
-    // Sukses -> majukan titik mulai rotasi untuk request berikutnya,
-    // supaya keempat key kepakai merata dari waktu ke waktu.
-    nextKeyIndex = (keyIndex + 1) % GROQ_API_KEYS.length;
+    console.log(
+      `Groq key ${
+        keyIndex + 1
+      } terkena rate limit.` +
+        (
+          retryAfterSeconds !== null
+            ? ` Retry-After: ${retryAfterSeconds}s`
+            : ""
+        )
+    );
+
+    const nextTried =
+      new Set(triedIndices);
+
+    nextTried.add(keyIndex);
+
+    // -----------------------------------------------------
+    // MASIH ADA KEY LAIN
+    // -----------------------------------------------------
+
+    if (
+      nextTried.size <
+      GROQ_API_KEYS.length
+    ) {
+      // Tidak sleep.
+      // Langsung coba key berikutnya.
+      return callGroq(
+        messages,
+        modelId,
+        maxTokens,
+        nextTried
+      );
+    }
+
+    // -----------------------------------------------------
+    // SEMUA KEY KENA 429
+    // -----------------------------------------------------
+
+    if (
+      retryAfterSeconds !== null
+    ) {
+      // Simpan Retry-After agar frontend
+      // bisa mengetahui kapan sebaiknya mencoba lagi.
+      response.headers.set(
+        "x-groq-retry-after",
+        String(retryAfterSeconds)
+      );
+    }
 
     return response;
-  });
+  }
+
+  // =======================================================
+  // SUKSES
+  // =======================================================
+
+  if (response.ok) {
+    nextKeyIndex =
+      (keyIndex + 1) %
+      GROQ_API_KEYS.length;
+
+    return response;
+  }
+
+  // =======================================================
+  // ERROR LAIN
+  // =======================================================
+
+  return response;
 }
 
-/* =========================================================
-   CLEAN MESSAGE
-========================================================= */
+// =========================================================
+// CLEAN MESSAGE
+// =========================================================
 
 function cleanMessages(messages) {
   return messages
     .filter((message) => {
       if (!message) return false;
 
-      if (!["user", "assistant"].includes(message.role)) return false;
-
-      if (typeof message.content === "string") {
-        return message.content.trim() !== "";
+      if (
+        !["user", "assistant"].includes(
+          message.role
+        )
+      ) {
+        return false;
       }
 
-      if (Array.isArray(message.content)) {
+      if (
+        typeof message.content === "string"
+      ) {
+        return (
+          message.content.trim() !== ""
+        );
+      }
+
+      if (
+        Array.isArray(message.content)
+      ) {
         return message.content.length > 0;
       }
 
       return false;
     })
+
     .map((message) => {
-      if (typeof message.content === "string") {
-        return { role: message.role, content: message.content.trim() };
+      if (
+        typeof message.content === "string"
+      ) {
+        return {
+          role: message.role,
+          content:
+            message.content.trim()
+        };
       }
 
-      return { role: message.role, content: message.content };
+      return {
+        role: message.role,
+        content: message.content
+      };
     });
 }
 
-/* =========================================================
-   DOCUMENT
-========================================================= */
+// =========================================================
+// DOCUMENT
+// =========================================================
 
 function containsDocument(content) {
-  if (typeof content !== "string") return false;
+  if (typeof content !== "string") {
+    return false;
+  }
 
   return (
     content.includes("[Isi file") ||
@@ -313,117 +541,174 @@ function containsDocument(content) {
   );
 }
 
-/* =========================================================
-   DOCUMENT NAME
-========================================================= */
+// =========================================================
+// DOCUMENT NAME
+// =========================================================
 
 function getDocumentName(content) {
-  if (typeof content !== "string") return "dokumen";
+  if (typeof content !== "string") {
+    return "dokumen";
+  }
 
   const match =
-    content.match(/\[Isi file "([^"]+)"\]/i) ||
-    content.match(/\[File "([^"]+)"\]/i);
+    content.match(
+      /\[Isi file "([^"]+)"\]/i
+    ) ||
+    content.match(
+      /\[File "([^"]+)"\]/i
+    );
 
   return match?.[1] || "dokumen";
 }
 
-/* =========================================================
-   DOCUMENT INSTRUCTION
-========================================================= */
+// =========================================================
+// DOCUMENT INSTRUCTION
+// =========================================================
 
-function buildDocumentInstruction(content) {
-  if (!containsDocument(content)) return null;
+function buildDocumentInstruction(
+  content
+) {
+  if (!containsDocument(content)) {
+    return null;
+  }
 
-  const fileName = getDocumentName(content);
+  const fileName =
+    getDocumentName(content);
 
   return `
-
 DOKUMEN USER
 
 Nama file: ${fileName}
 
 Gunakan dokumen sebagai sumber utama.
 Jangan mengarang data.
-
 `;
 }
 
-/* =========================================================
-   TRIM MESSAGE
-========================================================= */
+// =========================================================
+// TRIM MESSAGE
+// =========================================================
 
-function trimMessagesForModel(messages) {
+function trimMessagesForModel(
+  messages
+) {
   const imageIndices = [];
 
-  messages.forEach((message, index) => {
-    if (messageHasImage(message)) imageIndices.push(index);
-  });
-
-  const imageIndicesToStrip = new Set(
-    imageIndices.slice(
-      0,
-      Math.max(0, imageIndices.length - MAX_IMAGE_MSGS_KEPT_FULL)
-    )
+  messages.forEach(
+    (message, index) => {
+      if (messageHasImage(message)) {
+        imageIndices.push(index);
+      }
+    }
   );
+
+  const imageIndicesToStrip =
+    new Set(
+      imageIndices.slice(
+        0,
+        Math.max(
+          0,
+          imageIndices.length -
+            MAX_IMAGE_MSGS_KEPT_FULL
+        )
+      )
+    );
 
   const docIndices = [];
 
-  messages.forEach((message, index) => {
-    if (
-      typeof message.content === "string" &&
-      containsDocument(message.content)
-    ) {
-      docIndices.push(index);
+  messages.forEach(
+    (message, index) => {
+      if (
+        typeof message.content ===
+          "string" &&
+        containsDocument(
+          message.content
+        )
+      ) {
+        docIndices.push(index);
+      }
     }
-  });
-
-  const docIndicesToStrip = new Set(
-    docIndices.slice(
-      0,
-      Math.max(0, docIndices.length - MAX_DOCS_KEPT_FULL)
-    )
   );
 
-  let trimmed = messages.map((message, index) => {
-    if (imageIndicesToStrip.has(index)) {
-      const textPart = Array.isArray(message.content)
-        ? message.content.find((part) => part && part.type === "text")
-        : null;
+  const docIndicesToStrip =
+    new Set(
+      docIndices.slice(
+        0,
+        Math.max(
+          0,
+          docIndices.length -
+            MAX_DOCS_KEPT_FULL
+        )
+      )
+    );
 
-      const label = textPart?.text?.trim() || "(Gambar terlampir)";
+  let trimmed = messages.map(
+    (message, index) => {
+      if (
+        imageIndicesToStrip.has(index)
+      ) {
+        const textPart =
+          Array.isArray(
+            message.content
+          )
+            ? message.content.find(
+                (part) =>
+                  part &&
+                  part.type === "text"
+              )
+            : null;
 
-      return {
-        role: message.role,
-        content: label + "\n[Gambar lama tidak dikirim ulang]"
-      };
+        const label =
+          textPart?.text?.trim() ||
+          "(Gambar terlampir)";
+
+        return {
+          role: message.role,
+          content:
+            label +
+            "\n[Gambar lama tidak dikirim ulang]"
+        };
+      }
+
+      if (
+        docIndicesToStrip.has(index)
+      ) {
+        const fileName =
+          getDocumentName(
+            message.content
+          );
+
+        return {
+          role: message.role,
+          content:
+            `[Dokumen "${fileName}" sudah dianalisis. Isi tidak dikirim ulang]`
+        };
+      }
+
+      return message;
     }
+  );
 
-    if (docIndicesToStrip.has(index)) {
-      const fileName = getDocumentName(message.content);
-
-      return {
-        role: message.role,
-        content: `[Dokumen "${fileName}" sudah dianalisis. Isi tidak dikirim ulang]`
-      };
-    }
-
-    return message;
-  });
-
-  if (trimmed.length > MAX_HISTORY_MESSAGES_FOR_MODEL) {
+  if (
+    trimmed.length >
+    MAX_HISTORY_MESSAGES_FOR_MODEL
+  ) {
     trimmed = trimmed.slice(
-      trimmed.length - MAX_HISTORY_MESSAGES_FOR_MODEL
+      trimmed.length -
+        MAX_HISTORY_MESSAGES_FOR_MODEL
     );
   }
 
   return trimmed;
 }
 
-/* =========================================================
-   BUILD GROQ MESSAGE
-========================================================= */
+// =========================================================
+// BUILD GROQ MESSAGE
+// =========================================================
 
-function normalizeMessageContent(content) {
+function normalizeMessageContent(
+  content
+) {
   if (typeof content === "string") {
     return content;
   }
@@ -431,8 +716,14 @@ function normalizeMessageContent(content) {
   if (Array.isArray(content)) {
     return content
       .map((part) => {
-        if (typeof part === "string") return part;
-        if (part?.type === "text") return part.text || "";
+        if (typeof part === "string") {
+          return part;
+        }
+
+        if (part?.type === "text") {
+          return part.text || "";
+        }
+
         return "";
       })
       .filter(Boolean)
@@ -442,12 +733,13 @@ function normalizeMessageContent(content) {
   return String(content ?? "");
 }
 
-// System prompt dipangkas ±65% dari versi asli. Semua aturan inti
-// (fokus LiDAR/GIS, bebas bantu coding umum, format output, aturan
-// finansial, aturan memory) tetap ada, tapi ditulis lebih padat
-// supaya token per-request jauh lebih kecil, termasuk untuk pesan
-// pendek seperti "halo".
-const SYSTEM_PROMPT_TEMPLATE = (memoryText) => `Kamu Tanya, asisten AI spesialis LiDAR/GIS/terrain/hidrologi/data spasial, sekaligus asisten coding umum (semua bahasa pemrograman).
+// =========================================================
+// SYSTEM PROMPT
+// =========================================================
+
+const SYSTEM_PROMPT_TEMPLATE =
+  (memoryText) => `
+Kamu Tanya, asisten AI spesialis LiDAR/GIS/terrain/hidrologi/data spasial, sekaligus asisten coding umum (semua bahasa pemrograman).
 
 Bahasa Indonesia default, ikuti bahasa user. Jawab ringkas, teknis, berbasis data. Jangan mengarang. Pisahkan FAKTA / ASUMSI / ESTIMASI. Kalau data kurang, sebutkan data yang dibutuhkan.
 
@@ -471,43 +763,70 @@ ATURAN DATA LiDAR: jangan ubah satuan tanpa menyebut konversinya; jangan simpulk
 
 MEMORY: jika ada "nama: X", panggil user "X" tiap jawaban. Jangan tanya nama kalau sudah tersedia.
 
-${memoryText}`;
+${memoryText}
+`;
 
-function buildGroqMessages(cleanMessages, memoryText, useVision) {
+function buildGroqMessages(
+  cleanMessages,
+  memoryText,
+  useVision
+) {
   const result = [];
 
   result.push({
     role: "system",
-    content: SYSTEM_PROMPT_TEMPLATE(memoryText)
+    content:
+      SYSTEM_PROMPT_TEMPLATE(
+        memoryText
+      )
   });
 
   for (const message of cleanMessages) {
-    if (typeof message.content === "string") {
+    if (
+      typeof message.content ===
+      "string"
+    ) {
       const documentInstruction =
         message.role === "user"
-          ? buildDocumentInstruction(message.content)
+          ? buildDocumentInstruction(
+              message.content
+            )
           : null;
 
       if (documentInstruction) {
-        result.push({ role: "system", content: documentInstruction });
+        result.push({
+          role: "system",
+          content:
+            documentInstruction
+        });
       }
 
-      result.push({ role: message.role, content: message.content });
+      result.push({
+        role: message.role,
+        content: message.content
+      });
     } else {
-      // Content array hanya boleh dipakai untuk pesan terakhir yang
-      // sedang mengirim gambar ke Vision model.
       if (
         useVision &&
-        message === cleanMessages[cleanMessages.length - 1] &&
-        Array.isArray(message.content)
+        message ===
+          cleanMessages[
+            cleanMessages.length - 1
+          ] &&
+        Array.isArray(
+          message.content
+        )
       ) {
-        result.push({ role: message.role, content: message.content });
-      } else {
-        // Gambar dari chat sebelumnya diubah jadi text agar tidak
-        // error di model text.
         result.push({
           role: message.role,
-          content: normalizeMessageContent(message.content)
+          content: message.content
+        });
+      } else {
+        result.push({
+          role: message.role,
+          content:
+            normalizeMessageContent(
+              message.content
+            )
         });
       }
     }
@@ -516,280 +835,518 @@ function buildGroqMessages(cleanMessages, memoryText, useVision) {
   return result;
 }
 
-/* =========================================================
-   MAIN HANDLER
-========================================================= */
+// =========================================================
+// MAIN HANDLER
+// =========================================================
 
-export default async function handler(req, res) {
+export default async function handler(
+  req,
+  res
+) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res
+      .status(405)
+      .json({
+        error: "Method not allowed"
+      });
   }
 
-  /* =======================================================
-     AUTH HEADER
-  ======================================================= */
+  // =======================================================
+  // AUTH HEADER
+  // =======================================================
 
-  const authHeader = req.headers.authorization || "";
+  const authHeader =
+    req.headers.authorization || "";
 
-  if (!authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Belum login" });
+  if (
+    !authHeader.startsWith(
+      "Bearer "
+    )
+  ) {
+    return res
+      .status(401)
+      .json({
+        error: "Belum login"
+      });
   }
 
-  const idToken = authHeader.substring(7).trim();
+  const idToken =
+    authHeader.substring(7).trim();
 
-  /* =======================================================
-     VERIFY GOOGLE / MAGIC LINK
-  ======================================================= */
+  // =======================================================
+  // VERIFY AUTH
+  // =======================================================
 
   let user;
 
   try {
-    user = await verifyAuthToken(idToken);
+    user =
+      await verifyAuthToken(idToken);
   } catch (err) {
-    console.error("Auth error:", err);
+    console.error(
+      "Auth error:",
+      err
+    );
 
     return res
       .status(401)
-      .json({ error: "Sesi login tidak valid atau sudah expired" });
+      .json({
+        error:
+          "Sesi login tidak valid atau sudah expired"
+      });
   }
 
   const userId = user.userId;
 
   console.log(
-    `User login: ${user.email || userId} | provider=${user.provider}`
+    `User login: ${
+      user.email || userId
+    } | provider=${user.provider}`
   );
 
-  /* =======================================================
-     REQUEST BODY
-  ======================================================= */
+  // =======================================================
+  // REQUEST BODY
+  // =======================================================
 
-  const { messages, conversationId, projectId } = req.body || {};
+  const {
+    messages,
+    conversationId,
+    projectId
+  } = req.body || {};
 
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: "Pesan kosong" });
+  if (
+    !Array.isArray(messages) ||
+    messages.length === 0
+  ) {
+    return res
+      .status(400)
+      .json({
+        error: "Pesan kosong"
+      });
   }
 
-  const clean = cleanMessages(messages);
+  const clean =
+    cleanMessages(messages);
 
-  const lastUserMessage = [...clean]
-    .reverse()
-    .find((message) => message.role === "user");
+  const lastUserMessage =
+    [...clean]
+      .reverse()
+      .find(
+        (message) =>
+          message.role === "user"
+      );
 
-  /* =======================================================
-     CONVERSATION
-  ======================================================= */
+  // =======================================================
+  // CONVERSATION
+  // =======================================================
 
-  let convId = conversationId ? Number(conversationId) : null;
+  let convId = conversationId
+    ? Number(conversationId)
+    : null;
 
   if (!convId) {
-    const title = lastUserMessage
-      ? makeTitleFromMessage(
-          typeof lastUserMessage.content === "string"
-            ? lastUserMessage.content
-            : "Analisis gambar"
-        )
-      : "Percakapan baru";
+    const title =
+      lastUserMessage
+        ? makeTitleFromMessage(
+            typeof lastUserMessage.content ===
+              "string"
+              ? lastUserMessage.content
+              : "Analisis gambar"
+          )
+        : "Percakapan baru";
 
-    const conv = await createConversation(userId, title, projectId || null);
+    const conv =
+      await createConversation(
+        userId,
+        title,
+        projectId || null
+      );
 
     convId = conv.id;
   }
 
-  /* =======================================================
-     MEMORY
-  ======================================================= */
+  // =======================================================
+  // MEMORY
+  // =======================================================
 
-  let memoryText = "Belum ada memory tersimpan.";
+  let memoryText =
+    "Belum ada memory tersimpan.";
 
   try {
-    const memories = await getMemories(userId);
+    const memories =
+      await getMemories(userId);
 
-    memoryText = formatMemoriesForPrompt(memories);
+    memoryText =
+      formatMemoriesForPrompt(
+        memories
+      );
 
-    console.log(`Memory ditemukan: ${memories.length} item`);
+    console.log(
+      `Memory ditemukan: ${memories.length} item`
+    );
   } catch (err) {
-    console.error("Gagal ambil memories:", err);
-  }
-
-  if (memoryText.length > MAX_MEMORY_CHARS_IN_PROMPT) {
-    memoryText = memoryText.slice(0, MAX_MEMORY_CHARS_IN_PROMPT);
-
-    const lastNewLine = memoryText.lastIndexOf("\n");
-
-    if (lastNewLine > 0) {
-      memoryText = memoryText.substring(0, lastNewLine);
-    }
-
-    memoryText += "\n[Memory lama dipotong]";
-  }
-
-  console.log("Memory dikirim ke AI:", memoryText);
-
-  /* =======================================================
-     VISION
-  ======================================================= */
-
-  const useVision =
-    !!lastUserMessage && messageHasImage(lastUserMessage);
-
-  const trimmedForModel = trimMessagesForModel(clean);
-
-  let groqMessages = buildGroqMessages(trimmedForModel, memoryText, useVision);
-
-  if (useVision) {
-    groqMessages = capImagesPerRequest(groqMessages);
-  }
-
-  const modelToUse = useVision ? VISION_MODEL : MODEL;
-
-  const maxOutputTokens = useVision ? 1000 : 1200;
-
-  /* =======================================================
-     SAVE USER MESSAGE
-  ======================================================= */
-
-  if (lastUserMessage) {
-    const savedContent =
-      typeof lastUserMessage.content === "string"
-        ? lastUserMessage.content
-        : "[Lampiran gambar]";
-
-    saveChatMessage(userId, convId, "user", savedContent).catch(
-      console.error
+    console.error(
+      "Gagal ambil memories:",
+      err
     );
   }
 
-  /* =======================================================
-     GROQ
-  ======================================================= */
+  if (
+    memoryText.length >
+    MAX_MEMORY_CHARS_IN_PROMPT
+  ) {
+    memoryText =
+      memoryText.slice(
+        0,
+        MAX_MEMORY_CHARS_IN_PROMPT
+      );
+
+    const lastNewLine =
+      memoryText.lastIndexOf(
+        "\n"
+      );
+
+    if (lastNewLine > 0) {
+      memoryText =
+        memoryText.substring(
+          0,
+          lastNewLine
+        );
+    }
+
+    memoryText +=
+      "\n[Memory lama dipotong]";
+  }
+
+  console.log(
+    "Memory dikirim ke AI:",
+    memoryText
+  );
+
+  // =======================================================
+  // VISION
+  // =======================================================
+
+  const useVision =
+    !!lastUserMessage &&
+    messageHasImage(
+      lastUserMessage
+    );
+
+  const trimmedForModel =
+    trimMessagesForModel(clean);
+
+  let groqMessages =
+    buildGroqMessages(
+      trimmedForModel,
+      memoryText,
+      useVision
+    );
+
+  if (useVision) {
+    groqMessages =
+      capImagesPerRequest(
+        groqMessages
+      );
+  }
+
+  const modelToUse =
+    useVision
+      ? VISION_MODEL
+      : MODEL;
+
+  const maxOutputTokens =
+    useVision
+      ? 1000
+      : 1200;
+
+  // =======================================================
+  // SAVE USER MESSAGE
+  // =======================================================
+
+  if (lastUserMessage) {
+    const savedContent =
+      typeof lastUserMessage.content ===
+      "string"
+        ? lastUserMessage.content
+        : "[Lampiran gambar]";
+
+    saveChatMessage(
+      userId,
+      convId,
+      "user",
+      savedContent
+    ).catch(console.error);
+  }
+
+  // =======================================================
+  // GROQ
+  // =======================================================
 
   let upstream;
 
   try {
-    upstream = await callGroq(groqMessages, modelToUse, maxOutputTokens);
+    upstream =
+      await callGroq(
+        groqMessages,
+        modelToUse,
+        maxOutputTokens
+      );
   } catch (err) {
-    console.error("Groq error:", err);
+    console.error(
+      "Groq error:",
+      err
+    );
 
-    return res.status(502).json({ error: "Tidak dapat menghubungi AI" });
+    return res
+      .status(502)
+      .json({
+        error:
+          "Tidak dapat menghubungi AI"
+      });
   }
 
-  if (!upstream.ok || !upstream.body) {
-    const errorText = await upstream.text().catch(() => "");
+  // =======================================================
+  // GROQ ERROR
+  // =======================================================
 
-    console.error("GROQ ERROR:", {
-      status: upstream.status,
-      body: errorText
-    });
+  if (
+    !upstream.ok ||
+    !upstream.body
+  ) {
+    const errorText =
+      await upstream
+        .text()
+        .catch(() => "");
 
-    // Pertahankan 429 sebagai rate limit.
-    if (upstream.status === 429) {
+    console.error(
+      "GROQ ERROR:",
+      {
+        status:
+          upstream.status,
+        body: errorText
+      }
+    );
+
+    // -----------------------------------------------------
+    // RATE LIMIT
+    // -----------------------------------------------------
+
+    if (
+      upstream.status === 429
+    ) {
+      const retryAfter =
+        parseRetryAfterSeconds(
+          upstream,
+          errorText
+        );
+
+      if (
+        retryAfter !== null
+      ) {
+        res.setHeader(
+          "Retry-After",
+          String(retryAfter)
+        );
+      }
+
       return res
         .status(429)
-        .json({ error: "Limit Groq sudah tercapai. Silakan coba lagi nanti." });
+        .json({
+          error:
+            retryAfter !== null
+              ? `Semua Groq API key sedang terkena rate limit. Coba lagi dalam ${retryAfter} detik.`
+              : "Semua Groq API key sedang terkena rate limit. Silakan coba lagi nanti.",
+
+          code: "GROQ_RATE_LIMIT",
+
+          retryAfter:
+            retryAfter
+      });
     }
 
-    // Semua error dari Groq jangan diteruskan sebagai 401 agar
-    // frontend tidak menganggap sesi login habis.
-    return res.status(502).json({
-      error: errorText || "Gagal mendapatkan respons dari AI.",
-      code: "GROQ_ERROR"
-    });
+    // -----------------------------------------------------
+    // ERROR LAIN
+    // -----------------------------------------------------
+
+    return res
+      .status(502)
+      .json({
+        error:
+          errorText ||
+          "Gagal mendapatkan respons dari AI.",
+
+        code: "GROQ_ERROR"
+      });
   }
 
-  /* =======================================================
-     SSE
-  ======================================================= */
+  // =======================================================
+  // SSE
+  // =======================================================
 
   res.status(200);
 
-  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Conversation-Id", String(convId));
+  res.setHeader(
+    "Content-Type",
+    "text/event-stream; charset=utf-8"
+  );
+
+  res.setHeader(
+    "Cache-Control",
+    "no-cache"
+  );
+
+  res.setHeader(
+    "Connection",
+    "keep-alive"
+  );
+
+  res.setHeader(
+    "X-Conversation-Id",
+    String(convId)
+  );
 
   if (res.flushHeaders) {
     res.flushHeaders();
   }
 
-  const reader = upstream.body.getReader();
-  const decoder = new TextDecoder();
+  const reader =
+    upstream.body.getReader();
+
+  const decoder =
+    new TextDecoder();
 
   let sseBuffer = "";
   let fullReply = "";
 
-  /* =======================================================
-     PROCESS SSE
-  ======================================================= */
+  // =======================================================
+  // PROCESS SSE
+  // =======================================================
 
-  function processSSEChunk(chunkText) {
+  function processSSEChunk(
+    chunkText
+  ) {
     sseBuffer += chunkText;
 
-    const lines = sseBuffer.split("\n");
+    const lines =
+      sseBuffer.split("\n");
 
-    sseBuffer = lines.pop() ?? "";
+    sseBuffer =
+      lines.pop() ?? "";
 
     for (const line of lines) {
-      const trimmed = line.trim();
+      const trimmed =
+        line.trim();
 
-      if (!trimmed.startsWith("data:")) continue;
+      if (
+        !trimmed.startsWith(
+          "data:"
+        )
+      ) {
+        continue;
+      }
 
-      const payload = trimmed.slice(5).trim();
+      const payload =
+        trimmed
+          .slice(5)
+          .trim();
 
-      if (payload === "[DONE]") continue;
+      if (
+        payload === "[DONE]"
+      ) {
+        continue;
+      }
 
       try {
-        const json = JSON.parse(payload);
+        const json =
+          JSON.parse(payload);
 
-        const delta = json?.choices?.[0]?.delta?.content;
+        const delta =
+          json
+            ?.choices?.[0]
+            ?.delta?.content;
 
-        if (typeof delta === "string") {
+        if (
+          typeof delta ===
+          "string"
+        ) {
           fullReply += delta;
         }
       } catch {
-        // Abaikan SSE yang tidak valid.
+        // Abaikan SSE tidak valid.
       }
     }
   }
 
-  /* =======================================================
-     STREAM RESPONSE
-  ======================================================= */
+  // =======================================================
+  // STREAM RESPONSE
+  // =======================================================
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const {
+        done,
+        value
+      } =
+        await reader.read();
 
       if (done) break;
 
       res.write(value);
 
-      processSSEChunk(decoder.decode(value, { stream: true }));
+      processSSEChunk(
+        decoder.decode(
+          value,
+          {
+            stream: true
+          }
+        )
+      );
     }
   } catch (err) {
-    console.error("Streaming error:", err);
+    console.error(
+      "Streaming error:",
+      err
+    );
   }
 
-  /* =======================================================
-     SAVE ASSISTANT
-  ======================================================= */
+  // =======================================================
+  // SAVE ASSISTANT
+  // =======================================================
 
-  if (fullReply.trim()) {
-    await saveChatMessage(userId, convId, "assistant", fullReply.trim());
+  if (
+    fullReply.trim()
+  ) {
+    await saveChatMessage(
+      userId,
+      convId,
+      "assistant",
+      fullReply.trim()
+    );
   }
 
-  /* =======================================================
-     EXTRACT MEMORY
-  ======================================================= */
+  // =======================================================
+  // EXTRACT MEMORY
+  // =======================================================
 
-  if (lastUserMessage && typeof lastUserMessage.content === "string") {
-    console.log("Mulai ekstrak memory...");
+  if (
+    lastUserMessage &&
+    typeof lastUserMessage.content ===
+      "string"
+  ) {
+    console.log(
+      "Mulai ekstrak memory..."
+    );
 
-    await extractAndSaveFacts(userId, lastUserMessage.content);
+    await extractAndSaveFacts(
+      userId,
+      lastUserMessage.content
+    );
   }
 
-  /* =======================================================
-     END
-  ======================================================= */
+  // =======================================================
+  // END
+  // =======================================================
 
   res.end();
 }
