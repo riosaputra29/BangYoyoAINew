@@ -4476,6 +4476,170 @@ function addQuickActions(aiBubble, fullText) {
 }
 
 // =========================================================
+// TYPEWRITER EFFECT (JAWABAN AI MUNCUL BERTAHAP)
+// =========================================================
+// Sebelumnya, setiap chunk dari stream langsung dirender utuh
+// ke innerHTML, jadi kalau Groq mengirim potongan teks yang
+// besar sekaligus, jawaban terasa "muncul semua tiba-tiba".
+// Fungsi ini memisahkan KECEPATAN TERIMA DATA (dari network)
+// dari KECEPATAN TAMPIL (ke layar) — teks yang sudah diterima
+// ditampilkan sedikit demi sedikit dengan interval tetap,
+// sehingga terlihat seperti sedang diketik.
+
+function createTypewriter(
+  aiBubble,
+  getFullText
+){
+
+  const CHARS_PER_TICK = 3;
+  const TICK_MS = 16;
+
+  let displayedLength = 0;
+  let timer = null;
+
+
+  function renderUpTo(
+    length
+  ){
+
+    const fullText =
+      getFullText();
+
+    const stayPinned =
+      isNearBottom();
+
+    aiBubble.innerHTML =
+      renderMarkdown(
+        fullText.slice(
+          0,
+          length
+        )
+      );
+
+    highlightCodeBlocks(
+      aiBubble
+    );
+
+    if(
+      window.MathJax &&
+      MathJax.typesetPromise
+    ){
+      MathJax.typesetPromise([
+        aiBubble
+      ]).catch(
+        console.error
+      );
+    }
+
+    if(stayPinned){
+
+      messagesEl.scrollTop =
+        messagesEl.scrollHeight;
+
+    }
+
+  }
+
+
+  function tick(){
+
+    const fullText =
+      getFullText();
+
+    if(
+      displayedLength <
+      fullText.length
+    ){
+
+      displayedLength =
+        Math.min(
+          fullText.length,
+          displayedLength +
+            CHARS_PER_TICK
+        );
+
+      renderUpTo(
+        displayedLength
+      );
+
+    }
+
+  }
+
+
+  function start(){
+
+    if(timer) return;
+
+    timer =
+      setInterval(
+        tick,
+        TICK_MS
+      );
+
+  }
+
+
+  // Dipanggil setelah stream network selesai — menunggu
+  // sampai animasi ngetik benar-benar mengejar teks terakhir,
+  // baru resolve. Supaya history/quick actions/suggestion
+  // baru muncul setelah pengetikan visual selesai.
+  function finish(){
+
+    start();
+
+    return new Promise(
+      (resolve) => {
+
+        const check =
+          setInterval(
+            () => {
+
+              const fullText =
+                getFullText();
+
+              if(
+                displayedLength >=
+                fullText.length
+              ){
+
+                clearInterval(
+                  check
+                );
+
+                clearInterval(
+                  timer
+                );
+
+                timer = null;
+
+                renderUpTo(
+                  fullText.length
+                );
+
+                resolve();
+
+              }
+
+            },
+            TICK_MS
+          );
+
+      }
+    );
+
+  }
+
+
+  return {
+    start,
+    finish
+  };
+
+}
+
+
+// =========================================================
 // SEND MESSAGE
 // =========================================================
 
@@ -4930,6 +5094,12 @@ async function sendMessage(){
 
     let started = false;
 
+    const typewriter =
+      createTypewriter(
+        aiBubble,
+        () => fullText
+      );
+
 
     while(true){
 
@@ -5024,44 +5194,15 @@ async function sendMessage(){
             stopAIThinking(
               aiBubble
             );
+
+            typewriter.start();
         
           }
         
           started = true;
         
-          const stayPinned =
-            isNearBottom();
-        
           fullText +=
             chunkText;
-        
-          aiBubble.innerHTML =
-            renderMarkdown(
-              fullText
-            );
-
-            highlightCodeBlocks(
-              aiBubble
-            );
-
-            if(
-              window.MathJax &&
-              MathJax.typesetPromise
-            ){
-              MathJax.typesetPromise([
-                aiBubble
-              ]).catch(
-                console.error
-              );
-            }
-
-
-            if(stayPinned){
-
-              messagesEl.scrollTop =
-                messagesEl.scrollHeight;
-
-            }
 
           }
 
@@ -5097,6 +5238,12 @@ async function sendMessage(){
       }
 
     }
+
+
+    // Tunggu animasi ngetik selesai mengejar teks terakhir
+    // sebelum lanjut (biar suggestion/quick actions gak
+    // muncul lebih dulu dari teks yang masih "diketik").
+    await typewriter.finish();
 
 
     // SAVE AI HISTORY
