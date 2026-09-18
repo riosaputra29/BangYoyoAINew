@@ -10,13 +10,9 @@ import {
 
 import { extractAndSaveFacts } from "../lib/extract.js";
 
-import {
-  verifyTanyaToken
-} from "../lib/auth.js";
-
+import { verifyTanyaToken } from "../lib/auth.js";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-
 
 const GROQ_API_KEYS = [
   process.env.GROQ_KEY_1,
@@ -25,76 +21,49 @@ const GROQ_API_KEYS = [
   process.env.GROQ_KEY_4
 ].filter(Boolean);
 
+// FIX: sebelumnya di-hardcode ke 2, artinya key 1 & 2 tidak pernah dipakai
+// duluan. Mulai dari 0 supaya rotasi key jalan dari awal.
+let currentKeyIndex = 0;
 
-// let currentKeyIndex = 0;
-let currentKeyIndex = 2;
+const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
-const MODEL =
-  process.env.GROQ_MODEL ||
-  "openai/gpt-oss-120b";
-
-
-// const VISION_MODEL =
-//   process.env.GROQ_VISION_MODEL ||
-//   "qwen/qwen3.8-27b";
 const VISION_MODEL = "qwen/qwen3.8-27b";
-
 
 const MAX_IMAGES_PER_REQUEST = 5;
 
-const MAX_GROQ_RETRIES =
-  Math.max(GROQ_API_KEYS.length, 1);
-
+const MAX_GROQ_RETRIES = Math.max(GROQ_API_KEYS.length, 1);
 
 // TOKEN SAVING
-
 const MAX_HISTORY_MESSAGES_FOR_MODEL = 4;
-
 const MAX_DOCS_KEPT_FULL = 1;
-
 const MAX_IMAGE_MSGS_KEPT_FULL = 1;
-
 const MAX_MEMORY_CHARS_IN_PROMPT = 800;
 
-
-const googleClient =
-  new OAuth2Client(GOOGLE_CLIENT_ID);
-
-
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 /* =========================================================
    GOOGLE AUTH
 ========================================================= */
 
 async function verifyGoogleToken(idToken) {
+  const ticket = await googleClient.verifyIdToken({
+    idToken,
+    audience: GOOGLE_CLIENT_ID
+  });
 
-  const ticket =
-    await googleClient.verifyIdToken({
-      idToken,
-      audience: GOOGLE_CLIENT_ID
-    });
-
-  const payload =
-    ticket.getPayload();
+  const payload = ticket.getPayload();
 
   if (!payload) {
-    throw new Error(
-      "Payload Google tidak ditemukan."
-    );
+    throw new Error("Payload Google tidak ditemukan.");
   }
 
   return {
     userId: payload.sub,
     email: payload.email,
-    name:
-      payload.name ||
-      payload.email ||
-      "User",
+    name: payload.name || payload.email || "User",
     provider: "google"
   };
 }
-
-
 
 /* =========================================================
    MAGIC LINK TOKEN
@@ -119,625 +88,223 @@ async function verifyMagicToken(token) {
   };
 }
 
-
-
 /* =========================================================
    AUTH TOKEN
 ========================================================= */
 
 async function verifyAuthToken(token) {
-
   if (!token) {
     throw new Error("Token login kosong.");
   }
 
-  // Coba Google
   try {
     return await verifyGoogleToken(token);
   } catch (googleError) {
     console.log("Bukan Google token, mencoba Magic Link...");
   }
 
-  // Coba Magic Link session
   return await verifyMagicToken(token);
 }
-
-
 
 /* =========================================================
    IMAGE
 ========================================================= */
 
 function messageHasImage(message) {
-
-  if (
-    !message ||
-    !Array.isArray(message.content)
-  ) {
+  if (!message || !Array.isArray(message.content)) {
     return false;
   }
 
-
   return message.content.some(
-    (part) =>
-      part &&
-      part.type === "image_url"
+    (part) => part && part.type === "image_url"
   );
 }
-
-
 
 /* =========================================================
    CAP IMAGE
 ========================================================= */
 
-function capImagesPerRequest(
-  messages,
-  maxImages = MAX_IMAGES_PER_REQUEST
-) {
-
+function capImagesPerRequest(messages, maxImages = MAX_IMAGES_PER_REQUEST) {
   let imageCount = 0;
 
+  const reversed = [...messages].reverse();
 
-  const reversed =
-    [...messages].reverse();
+  const capped = reversed.map((message) => {
+    if (!Array.isArray(message.content)) {
+      return message;
+    }
 
-
-  const capped =
-    reversed.map((message) => {
-
-      if (
-        !Array.isArray(
-          message.content
-        )
-      ) {
-        return message;
+    const newContent = message.content.filter((part) => {
+      if (part && part.type === "image_url") {
+        imageCount++;
+        return imageCount <= maxImages;
       }
-
-
-      const newContent =
-        message.content.filter(
-          (part) => {
-
-            if (
-              part &&
-              part.type === "image_url"
-            ) {
-
-              imageCount++;
-
-              return (
-                imageCount <=
-                maxImages
-              );
-            }
-
-            return true;
-
-          }
-        );
-
-
-      return {
-        ...message,
-        content: newContent
-      };
-
+      return true;
     });
 
+    return { ...message, content: newContent };
+  });
 
   return capped.reverse();
 }
-
-
 
 /* =========================================================
    SLEEP
 ========================================================= */
 
 function sleep(ms) {
-
-  return new Promise(
-    (resolve) =>
-      setTimeout(resolve, ms)
-  );
-
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-
 
 /* =========================================================
    GROQ
 ========================================================= */
-function callGroq(
-  messages,
-  modelId,
-  maxTokens,
-  attempt = 0
-) {
 
+function callGroq(messages, modelId, maxTokens, attempt = 0) {
   if (GROQ_API_KEYS.length === 0) {
     return Promise.reject(
       new Error("GROQ API key belum dikonfigurasi.")
     );
   }
 
-  const apiKey =
-    GROQ_API_KEYS[currentKeyIndex];
+  const apiKey = GROQ_API_KEYS[currentKeyIndex];
 
   console.log(
-    `Chat pakai Groq key ${
-      currentKeyIndex + 1
-    }/${GROQ_API_KEYS.length}`
+    `Chat pakai Groq key ${currentKeyIndex + 1}/${GROQ_API_KEYS.length}`
   );
 
-  return fetch(
-    "https://api.groq.com/openai/v1/chat/completions",
-    {
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + apiKey
-      },
-
-      body: JSON.stringify({
-        model: modelId,
-        messages,
-        stream: true,
-        max_tokens: maxTokens,
-        temperature: 0.2
-      })
-    }
-  ).then(async (response) => {
-
+  return fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + apiKey
+    },
+    body: JSON.stringify({
+      model: modelId,
+      messages,
+      stream: true,
+      max_tokens: maxTokens,
+      temperature: 0.2
+    })
+  }).then(async (response) => {
     /*
      * 401 = API KEY INVALID
      * 429 = RATE LIMIT
-     *
-     * Keduanya pindah ke key berikutnya.
+     * Keduanya pindah ke key berikutnya, kecuali rate limit
+     * yang disebabkan oleh request terlalu besar (bukan salah key).
      */
 
-    // if (
-    //   response.status === 401 ||
-    //   response.status === 429
-    // ) {
-
-    //   console.log(
-    //     `Groq key ${
-    //       currentKeyIndex + 1
-    //     } gagal. Status: ${response.status}`
-    //   );
-
-    //   if (
-    //     attempt + 1 >=
-    //     MAX_GROQ_RETRIES
-    //   ) {
-    //     return response;
-    //   }
-
-    //   currentKeyIndex =
-    //     (currentKeyIndex + 1) %
-    //     GROQ_API_KEYS.length;
-
-    //   console.log(
-    //     `Pindah ke Groq key ${
-    //       currentKeyIndex + 1
-    //     }/${GROQ_API_KEYS.length}`
-    //   );
-
-    //   await sleep(
-    //     300 * (attempt + 1)
-    //   );
-
-    //   return callGroq(
-    //     messages,
-    //     modelId,
-    //     maxTokens,
-    //     attempt + 1
-    //   );
-    // }
-
     if (response.status === 401) {
+      console.log(`Groq key ${currentKeyIndex + 1} invalid.`);
 
-      console.log(
-        `Groq key ${currentKeyIndex + 1} invalid.`
-      );
-    
-      if (
-        attempt + 1 >=
-        MAX_GROQ_RETRIES
-      ) {
+      if (attempt + 1 >= MAX_GROQ_RETRIES) {
         return response;
       }
-    
-      currentKeyIndex =
-        (currentKeyIndex + 1) %
-        GROQ_API_KEYS.length;
-    
-      await sleep(
-        300 * (attempt + 1)
-      );
-    
-      return callGroq(
-        messages,
-        modelId,
-        maxTokens,
-        attempt + 1
-      );
+
+      currentKeyIndex = (currentKeyIndex + 1) % GROQ_API_KEYS.length;
+
+      await sleep(300 * (attempt + 1));
+
+      return callGroq(messages, modelId, maxTokens, attempt + 1);
     }
-    
-    
+
     if (response.status === 429) {
-    
-      const errorText =
-        await response.clone()
-          .text()
-          .catch(() => "");
-    
-      // Request terlalu besar:
-      // jangan pindah API key.
+      const errorText = await response.clone().text().catch(() => "");
+
+      // Request terlalu besar: jangan pindah API key.
       if (
-        errorText.includes(
-          "output tokens per minute"
-        ) ||
-        errorText.includes(
-          "Requested"
-        )
+        errorText.includes("output tokens per minute") ||
+        errorText.includes("Requested")
       ) {
-    
-        console.log(
-          "Groq: output token terlalu besar."
-        );
-    
+        console.log("Groq: output token terlalu besar.");
         return response;
       }
-    
-      // Rate limit biasa → coba key berikutnya
-      console.log(
-        `Groq key ${
-          currentKeyIndex + 1
-        } terkena rate limit.`
-      );
-    
-      if (
-        attempt + 1 >=
-        MAX_GROQ_RETRIES
-      ) {
+
+      // Rate limit biasa -> coba key berikutnya.
+      console.log(`Groq key ${currentKeyIndex + 1} terkena rate limit.`);
+
+      if (attempt + 1 >= MAX_GROQ_RETRIES) {
         return response;
       }
-    
-      currentKeyIndex =
-        (currentKeyIndex + 1) %
-        GROQ_API_KEYS.length;
-    
-      await sleep(
-        300 * (attempt + 1)
-      );
-    
-      return callGroq(
-        messages,
-        modelId,
-        maxTokens,
-        attempt + 1
-      );
+
+      currentKeyIndex = (currentKeyIndex + 1) % GROQ_API_KEYS.length;
+
+      await sleep(300 * (attempt + 1));
+
+      return callGroq(messages, modelId, maxTokens, attempt + 1);
     }
-    
 
     return response;
   });
 }
-
-// function callGroq(
-//   messages,
-//   modelId,
-//   maxTokens,
-//   attempt = 0
-// ) {
-
-//   if (
-//     GROQ_API_KEYS.length === 0
-//   ) {
-
-//     return Promise.reject(
-//       new Error(
-//         "GROQ API key belum dikonfigurasi."
-//       )
-//     );
-
-//   }
-
-
-//   const apiKey =
-//     GROQ_API_KEYS[
-//       currentKeyIndex
-//     ];
-
-
-//   console.log(
-//     `Chat pakai Groq key ${
-//       currentKeyIndex + 1
-//     }/${GROQ_API_KEYS.length}`
-//   );
-
-
-//   return fetch(
-//     "https://api.groq.com/openai/v1/chat/completions",
-//     {
-
-//       method: "POST",
-
-//       headers: {
-
-//         "Content-Type":
-//           "application/json",
-
-//         "Authorization":
-//           "Bearer " + apiKey
-
-//       },
-
-//       body: JSON.stringify({
-
-//         model: modelId,
-
-//         messages,
-
-//         stream: true,
-
-//         max_tokens:
-//           maxTokens,
-
-//         temperature: 0.2
-
-//       })
-
-//     }
-
-//   ).then(
-//     async (response) => {
-
-//       if (
-//         response.status === 429
-//       ) {
-
-//         console.log(
-//           `Groq key ${
-//             currentKeyIndex + 1
-//           } kena rate limit`
-//         );
-
-
-//         if (
-//           attempt + 1 >=
-//           MAX_GROQ_RETRIES
-//         ) {
-
-//           return response;
-
-//         }
-
-
-//         currentKeyIndex =
-//           (
-//             currentKeyIndex + 1
-//           ) %
-//           GROQ_API_KEYS.length;
-
-
-//         await sleep(
-//           300 *
-//           (attempt + 1)
-//         );
-
-
-//         return callGroq(
-//           messages,
-//           modelId,
-//           maxTokens,
-//           attempt + 1
-//         );
-
-//       }
-
-
-//       return response;
-
-//     }
-//   );
-
-// }
-
-
 
 /* =========================================================
    CLEAN MESSAGE
 ========================================================= */
 
 function cleanMessages(messages) {
-
   return messages
-
     .filter((message) => {
+      if (!message) return false;
 
-      if (!message) {
-        return false;
+      if (!["user", "assistant"].includes(message.role)) return false;
+
+      if (typeof message.content === "string") {
+        return message.content.trim() !== "";
       }
 
-
-      if (
-        ![
-          "user",
-          "assistant"
-        ].includes(
-          message.role
-        )
-      ) {
-        return false;
+      if (Array.isArray(message.content)) {
+        return message.content.length > 0;
       }
-
-
-      if (
-        typeof message.content ===
-        "string"
-      ) {
-
-        return (
-          message.content.trim() !==
-          ""
-        );
-
-      }
-
-
-      if (
-        Array.isArray(
-          message.content
-        )
-      ) {
-
-        return (
-          message.content.length >
-          0
-        );
-
-      }
-
 
       return false;
-
     })
-
     .map((message) => {
-
-      if (
-        typeof message.content ===
-        "string"
-      ) {
-
-        return {
-
-          role:
-            message.role,
-
-          content:
-            message.content.trim()
-
-        };
-
+      if (typeof message.content === "string") {
+        return { role: message.role, content: message.content.trim() };
       }
 
-
-      return {
-
-        role:
-          message.role,
-
-        content:
-          message.content
-
-      };
-
+      return { role: message.role, content: message.content };
     });
-
 }
-
-
 
 /* =========================================================
    DOCUMENT
 ========================================================= */
 
-function containsDocument(
-  content
-) {
-
-  if (
-    typeof content !==
-    "string"
-  ) {
-    return false;
-  }
-
+function containsDocument(content) {
+  if (typeof content !== "string") return false;
 
   return (
-
-    content.includes(
-      "[Isi file"
-    ) ||
-
-    content.includes(
-      '[File "'
-    ) ||
-
-    content.includes(
-      "--- Sheet:"
-    ) ||
-
-    content.includes(
-      "--- Halaman"
-    )
-
+    content.includes("[Isi file") ||
+    content.includes('[File "') ||
+    content.includes("--- Sheet:") ||
+    content.includes("--- Halaman")
   );
-
 }
-
-
 
 /* =========================================================
    DOCUMENT NAME
 ========================================================= */
 
-function getDocumentName(
-  content
-) {
-
-  if (
-    typeof content !==
-    "string"
-  ) {
-    return "dokumen";
-  }
-
+function getDocumentName(content) {
+  if (typeof content !== "string") return "dokumen";
 
   const match =
+    content.match(/\[Isi file "([^"]+)"\]/i) ||
+    content.match(/\[File "([^"]+)"\]/i);
 
-    content.match(
-      /\[Isi file "([^"]+)"\]/i
-    ) ||
-
-    content.match(
-      /\[File "([^"]+)"\]/i
-    );
-
-
-  return (
-    match?.[1] ||
-    "dokumen"
-  );
-
+  return match?.[1] || "dokumen";
 }
-
-
 
 /* =========================================================
    DOCUMENT INSTRUCTION
 ========================================================= */
 
-function buildDocumentInstruction(
-  content
-) {
+function buildDocumentInstruction(content) {
+  if (!containsDocument(content)) return null;
 
-  if (
-    !containsDocument(content)
-  ) {
-    return null;
-  }
-
-
-  const fileName =
-    getDocumentName(content);
-
+  const fileName = getDocumentName(content);
 
   return `
 
@@ -749,188 +316,83 @@ Gunakan dokumen sebagai sumber utama.
 Jangan mengarang data.
 
 `;
-
 }
-
-
 
 /* =========================================================
    TRIM MESSAGE
 ========================================================= */
 
-function trimMessagesForModel(
-  messages
-) {
-
+function trimMessagesForModel(messages) {
   const imageIndices = [];
 
+  messages.forEach((message, index) => {
+    if (messageHasImage(message)) imageIndices.push(index);
+  });
 
-  messages.forEach(
-    (message, index) => {
-
-      if (
-        messageHasImage(message)
-      ) {
-
-        imageIndices.push(index);
-
-      }
-
-    }
+  const imageIndicesToStrip = new Set(
+    imageIndices.slice(
+      0,
+      Math.max(0, imageIndices.length - MAX_IMAGE_MSGS_KEPT_FULL)
+    )
   );
-
-
-  const imageIndicesToStrip =
-    new Set(
-
-      imageIndices.slice(
-        0,
-        Math.max(
-          0,
-          imageIndices.length -
-            MAX_IMAGE_MSGS_KEPT_FULL
-        )
-      )
-
-    );
-
 
   const docIndices = [];
 
-
-  messages.forEach(
-    (message, index) => {
-
-      if (
-
-        typeof message.content ===
-          "string" &&
-
-        containsDocument(
-          message.content
-        )
-
-      ) {
-
-        docIndices.push(index);
-
-      }
-
+  messages.forEach((message, index) => {
+    if (
+      typeof message.content === "string" &&
+      containsDocument(message.content)
+    ) {
+      docIndices.push(index);
     }
+  });
+
+  const docIndicesToStrip = new Set(
+    docIndices.slice(
+      0,
+      Math.max(0, docIndices.length - MAX_DOCS_KEPT_FULL)
+    )
   );
 
+  let trimmed = messages.map((message, index) => {
+    if (imageIndicesToStrip.has(index)) {
+      const textPart = Array.isArray(message.content)
+        ? message.content.find((part) => part && part.type === "text")
+        : null;
 
-  const docIndicesToStrip =
-    new Set(
+      const label = textPart?.text?.trim() || "(Gambar terlampir)";
 
-      docIndices.slice(
-        0,
-        Math.max(
-          0,
-          docIndices.length -
-            MAX_DOCS_KEPT_FULL
-        )
-      )
+      return {
+        role: message.role,
+        content: label + "\n[Gambar lama tidak dikirim ulang]"
+      };
+    }
 
+    if (docIndicesToStrip.has(index)) {
+      const fileName = getDocumentName(message.content);
+
+      return {
+        role: message.role,
+        content: `[Dokumen "${fileName}" sudah dianalisis. Isi tidak dikirim ulang]`
+      };
+    }
+
+    return message;
+  });
+
+  if (trimmed.length > MAX_HISTORY_MESSAGES_FOR_MODEL) {
+    trimmed = trimmed.slice(
+      trimmed.length - MAX_HISTORY_MESSAGES_FOR_MODEL
     );
-
-
-  let trimmed =
-    messages.map(
-      (message, index) => {
-
-        if (
-          imageIndicesToStrip.has(
-            index
-          )
-        ) {
-
-          const textPart =
-            Array.isArray(
-              message.content
-            )
-              ? message.content.find(
-                  (part) =>
-                    part &&
-                    part.type ===
-                      "text"
-                )
-              : null;
-
-
-          const label =
-            textPart?.text?.trim() ||
-            "(Gambar terlampir)";
-
-
-          return {
-
-            role:
-              message.role,
-
-            content:
-              label +
-              "\n[Gambar lama tidak dikirim ulang]"
-
-          };
-
-        }
-
-
-        if (
-          docIndicesToStrip.has(
-            index
-          )
-        ) {
-
-          const fileName =
-            getDocumentName(
-              message.content
-            );
-
-
-          return {
-
-            role:
-              message.role,
-
-            content:
-              `[Dokumen "${fileName}" sudah dianalisis. Isi tidak dikirim ulang]`
-
-          };
-
-        }
-
-
-        return message;
-
-      }
-    );
-
-
-  if (
-    trimmed.length >
-    MAX_HISTORY_MESSAGES_FOR_MODEL
-  ) {
-
-    trimmed =
-      trimmed.slice(
-        trimmed.length -
-          MAX_HISTORY_MESSAGES_FOR_MODEL
-      );
-
   }
 
-
   return trimmed;
-
 }
-
-
 
 /* =========================================================
    BUILD GROQ MESSAGE
 ========================================================= */
+
 function normalizeMessageContent(content) {
   if (typeof content === "string") {
     return content;
@@ -938,13 +400,9 @@ function normalizeMessageContent(content) {
 
   if (Array.isArray(content)) {
     return content
-      .map(part => {
+      .map((part) => {
         if (typeof part === "string") return part;
-
-        if (part?.type === "text") {
-          return part.text || "";
-        }
-
+        if (part?.type === "text") return part.text || "";
         return "";
       })
       .filter(Boolean)
@@ -954,205 +412,73 @@ function normalizeMessageContent(content) {
   return String(content ?? "");
 }
 
-function buildGroqMessages(
-  cleanMessages,
-  memoryText,
-  useVision
-) {
+// System prompt dipangkas ±65% dari versi asli. Semua aturan inti
+// (fokus LiDAR/GIS, bebas bantu coding umum, format output, aturan
+// finansial, aturan memory) tetap ada, tapi ditulis lebih padat
+// supaya token per-request jauh lebih kecil, termasuk untuk pesan
+// pendek seperti "halo".
+const SYSTEM_PROMPT_TEMPLATE = (memoryText) => `Kamu Tanya, asisten AI spesialis LiDAR/GIS/terrain/hidrologi/data spasial, sekaligus asisten coding umum (semua bahasa pemrograman).
 
+Bahasa Indonesia default, ikuti bahasa user. Jawab ringkas, teknis, berbasis data. Jangan mengarang. Pisahkan FAKTA / ASUMSI / ESTIMASI. Kalau data kurang, sebutkan data yang dibutuhkan.
+
+DI LUAR LiDAR/GIS: kalau diminta script/kode/function bahasa apa pun yang tidak terkait LiDAR/GIS, langsung buatkan selengkap mungkin seperti asisten coding biasa (penjelasan singkat + code block). Jangan menolak, jangan bilang di luar keahlian, jangan alihkan ke topik LiDAR/GIS. Format khusus LiDAR/GIS di bawah HANYA untuk analisis spasial.
+
+ANALISIS LiDAR/GIS — perhatikan: elevasi, slope, aspect, terrain, drainage, flow path/accumulation, depression, watershed. Bedakan DSM/DTM/DEM/point cloud (LAS/LAZ) bila info tersedia. Untuk banjir: identifikasi area rendah, arah aliran, titik akumulasi, hambatan, kanal, tanggul — pakai istilah "indikasi/potensi/perlu validasi", jangan klaim pasti tanpa simulasi hidrologi/hidraulika. Kalau ada data before/after, analisis perubahan elevasi & indikasi cut/fill. Pakai angka eksplisit dari data yang ada; jangan mengarang koordinat/luas/elevasi/volume/lokasi.
+
+Urutan analisis: DATA -> ELEVASI -> TERRAIN -> DRAINAGE -> RISIKO -> DAMPAK -> TINDAKAN -> VALIDASI.
+
+Format output (khusus analisis LiDAR/GIS/banjir/kanal/tanggul, jika relevan):
+TEMUAN / DAMPAK FINANSIAL (Rp)/WAKTU / TINDAKAN / REKOMENDASI TEKNIS / PRIORITAS / AREA / VALIDASI
+
+PERHITUNGAN: dilarang LaTeX/HTML. Pakai teks biasa dengan +, -, ×, ÷. Contoh:
+Total = Rp 136.250.000
+Biaya = Rp 125.000.000
+Penghematan = Rp 136.250.000 - Rp 125.000.000 = Rp 11.250.000
+
+ESTIMASI FINANSIAL: hitung Rupiah hanya jika data cukup. Rumus dasar: Kerugian = Area × Nilai/ha × %kehilangan. Untuk banjir/infrastruktur, tambahkan jika tersedia: kehilangan produksi + kerusakan aset + recovery + downtime. Jangan mengarang harga/luas/persentase/volume/biaya. Semua asumsi wajib ditandai "Asumsi: ...". Pakai Rp juta/miliar untuk angka besar. Estimasi bukan angka pasti, perlu validasi.
+
+ATURAN DATA LiDAR: jangan ubah satuan tanpa menyebut konversinya; jangan simpulkan kedalaman genangan hanya dari elevasi tanpa muka air; jangan simpulkan debit/kapasitas kanal tanpa data hidrologi/hidraulika; jangan sebut hasil sebagai simulasi kalau hanya interpretasi DEM/DTM; pertimbangkan resolusi raster/point density serta konsistensi CRS/datum/satuan bila tersedia; sebutkan bagian yang perlu ground truth/check survey.
+
+MEMORY: jika ada "nama: X", panggil user "X" tiap jawaban. Jangan tanya nama kalau sudah tersedia.
+
+${memoryText}`;
+
+function buildGroqMessages(cleanMessages, memoryText, useVision) {
   const result = [];
 
-result.push({
-  role: "system",
-  content: `Kamu Tanya, asisten AI yang fokus pada analisis LiDAR, GIS, terrain, hidrologi, data spasial, scripting, mysql dan sejenisnya termasuk semua bahasa pemrograman.
-
-  Bahasa Indonesia secara default, ikuti bahasa user. Jawab ringkas, padat, teknis, dan berbasis data. Jangan mengarang. Pisahkan FAKTA, ASUMSI, dan ESTIMASI. Jika data tidak cukup, sebutkan data yang masih dibutuhkan.
-
-  ATURAN PERMINTAAN DI LUAR LiDAR/GIS (WAJIB):
-  - Spesialisasi LiDAR/GIS di atas TIDAK membatasi kemampuan kamu. Kamu tetap asisten pemrograman umum yang lengkap.
-  - Kalau user minta dibuatkan script, kode, atau function di bahasa apa pun (PHP, JavaScript, Python, SQL/MySQL, Java, C++, dll) yang TIDAK berhubungan dengan LiDAR/GIS, JANGAN PERNAH menolak, JANGAN bilang itu di luar keahlianmu, dan JANGAN mengalihkan topik ke LiDAR/GIS.
-  - Langsung buatkan kode yang diminta selengkap dan sebaik mungkin, seperti asisten coding pada umumnya, tanpa disclaimer soal "spesialisasi saya LiDAR" atau semacamnya.
-  - Format output khusus LiDAR/GIS (TEMUAN, DAMPAK FINANSIAL, dst di bawah) HANYA dipakai untuk analisis LiDAR/GIS/spasial. Untuk permintaan coding umum, jawab dengan format normal ala asisten programming (penjelasan singkat + code block), bukan format itu.
-
-  IDENTITAS TANYA — SPESIALIS LiDAR:
-  - Utamakan interpretasi data LiDAR dan geospasial dibanding jawaban generik.
-  - Pahami hubungan elevasi, slope, aspect, terrain, drainage, flow path, flow accumulation, depression, watershed, dan perubahan permukaan.
-  - Bedakan DSM, DTM, DEM, dan data point cloud/LAS/LAZ jika informasinya tersedia.
-  - Untuk analisis terrain, perhatikan perubahan elevasi, kemiringan, kontur, cekungan, punggungan, dan jalur aliran.
-  - Untuk banjir, identifikasi area rendah, arah aliran, titik akumulasi, hambatan aliran, kanal, tanggul, dan area yang berpotensi tergenang.
-  - Jangan menyatakan suatu area pasti banjir hanya dari elevasi/slope. Gunakan istilah "indikasi", "potensi", atau "perlu validasi" jika belum ada simulasi hidrologi/hidraulika.
-  - Jika tersedia data before/after LiDAR, analisis perubahan elevasi dan indikasi cut/fill atau perubahan permukaan.
-  - Jika tersedia data volume, area, elevasi, atau kelas point cloud, gunakan angka tersebut secara eksplisit.
-  - Jika data spasial tidak tersedia, jangan mengarang koordinat, luas, elevasi, volume, atau lokasi.
-  
-  URUTAN ANALISIS LiDAR:
-  1. DATA — identifikasi sumber, resolusi, satuan, periode, dan kualitas data.
-  2. ELEVASI — analisis nilai minimum, maksimum, rata-rata, dan perbedaan elevasi jika tersedia.
-  3. TERRAIN — analisis slope, kontur, cekungan, punggungan, dan perubahan permukaan.
-  4. DRAINAGE — identifikasi arah aliran, flow path, flow accumulation, kanal, dan hambatan aliran jika tersedia.
-  5. RISIKO — identifikasi area rendah, genangan potensial, erosi, sedimentasi, atau gangguan infrastruktur.
-  6. DAMPAK — hubungkan area terdampak dengan produksi, aset, akses, downtime, atau operasional.
-  7. TINDAKAN — berikan tindakan teknis yang sesuai dengan temuan data.
-  8. VALIDASI — sebutkan data lapangan atau analisis tambahan yang diperlukan.
-  
-  FORMAT OUTPUT HANYA UNTUK LIDAR/GIS DAN SEJENISNYA:
-  Untuk analisis LiDAR/GIS/banjir/kanal/tanggul gunakan jika relevan:
-  
-  TEMUAN
-  DAMPAK FINANSIAL (Rp)/WAKTU
-  TINDAKAN
-  REKOMENDASI TEKNIS
-  PRIORITAS
-  AREA
-  VALIDASI
-  
-  PERHITUNGAN:
-  Dilarang menggunakan LaTeX atau HTML dalam kondisi apa pun.
-  Semua operasi matematika ditulis sebagai teks biasa menggunakan +, -, ×, ÷.
-  
-  Contoh:
-  Total = Rp 136.250.000
-  Biaya = Rp 125.000.000
-  Penghematan = Rp 136.250.000 - Rp 125.000.000 = Rp 11.250.000
-  
-  ESTIMASI FINANSIAL:
-  - Hitung Rupiah hanya jika data mencukupi.
-  - Rumus dasar:
-    Kerugian = Area × Nilai/ha × %kehilangan
-  - Untuk banjir/infrastruktur, pertimbangkan jika datanya tersedia:
-    kehilangan produksi + kerusakan aset + recovery + downtime.
-  - Jangan mengarang harga, luas, persentase kerusakan, volume, atau biaya.
-  - Semua asumsi wajib ditulis:
-    Asumsi: ...
-  - Gunakan Rp juta atau Rp miliar jika angka besar.
-  - Estimasi bukan angka pasti dan harus divalidasi.
-  
-  ATURAN DATA LiDAR:
-  - Jangan mengubah satuan tanpa menyebutkan konversinya.
-  - Jangan menyimpulkan kedalaman genangan hanya dari elevasi tanah tanpa informasi muka air.
-  - Jangan menyimpulkan debit atau kapasitas kanal tanpa data hidrologi/hidraulika.
-  - Jangan menyatakan hasil sebagai simulasi jika hanya interpretasi DEM/DTM.
-  - Jika resolusi raster/point density tersedia, pertimbangkan pengaruhnya terhadap ketelitian analisis.
-  - Jika koordinat, CRS, datum vertikal, atau satuan elevasi tersedia, perhatikan konsistensinya.
-  - Untuk hasil LiDAR yang memerlukan validasi lapangan, nyatakan bagian yang perlu ground truth/check survey.
-  
-  MEMORY:
-  Jika ada "nama: X", panggil user "X" setiap jawaban. Jangan tanya nama jika sudah tersedia.
-  
-  ${memoryText}`
+  result.push({
+    role: "system",
+    content: SYSTEM_PROMPT_TEMPLATE(memoryText)
   });
 
-  // const result = [];
-
-  // result.push({ role: "system", content: `Kamu Tanya, asisten AI akurat & teliti. Bahasa Indonesia (ikuti bahasa user). Jawab ringkas, jangan mengarang. Pisahkan data/asumsi/estimasi. Jika data kurang, sebutkan data yang dibutuhkan.
-
-  // FORMAT OUTPUT (WAJIB, semua perhitungan/operasi +,-,×,÷): Dilarang LaTeX (\\text, \\begin{aligned}, \\mathbf) atau HTML (<p>, <br>) dalam kondisi apapun. Tulis perhitungan sbg teks biasa, titik ribuan, contoh:
-  // Total = Rp 136.250.000
-  // Biaya = Rp 125.000.000
-  // Penghematan = Rp 136.250.000 - Rp 125.000.000 = Rp 11.250.000
-  
-  // ANALISIS (GIS/LiDAR/banjir/kanal/tanggul/bisnis/laporan), jika relevan pakai format:
-  // TEMUAN | DAMPAK FINANSIAL (Rp)/WAKTU | TINDAKAN | REKOMENDASI TEKNIS | PRIORITAS | AREA | VALIDASI
-  
-  // ESTIMASI FINANSIAL: hitung Rupiah jika data cukup.
-  // Rumus: Kerugian = Area × Nilai/ha × %kehilangan
-  // Banjir/infra: tambah kehilangan produksi + kerusakan aset + recovery + downtime.
-  // Dilarang mengarang angka. Asumsi wajib ditandai "Asumsi: ...". Gunakan Rp juta/miliar. Estimasi ≠ angka pasti, perlu validasi.
-  
-  // GIS/LiDAR: analisis elevasi, slope, aliran, area rendah, genangan, kanal, tanggul, area terdampak jika tersedia. Bedakan indikasi vs simulasi tervalidasi.
-  
-  // MEMORY: jika ada "nama: X", panggil user "X" tiap jawaban. Jangan tanya nama jika sudah ada.
-  // ${memoryText}`
-  // });
-
-  // result.push({
-  //   role: "system",
-  //   content: `Kamu adalah Tanya, asisten AI yang ramah dan teliti.
-
-  //   ATURAN UTAMA:
-  //   Utamakan akurasi.
-  //   Jangan mengarang.
-    
-  //   BAHASA:
-  //   Gunakan Bahasa Indonesia default.
-  //   Ikuti bahasa user.
-
-  //   ACTIONABLE INSIGHT:
-  //   Untuk analisis data, bisnis, GIS, LiDAR, peta, atau laporan, jika data cukup:
-  //   - TEMUAN
-  //   - DAMPAK BISNIS : JELASKAN DALAM RUPIAH/WAKTU
-  //   - TINDAKAN
-  //   - REKOMENDASI TEKNIS
-  //   - PRIORITAS
-  //   - AREA
-  //   - VALIDASI
-    
-  //   ATURAN MEMORY YANG WAJIB:
-    
-  //   Jika di bawah ada "nama: Budi",
-  //   maka WAJIB panggil user "Budi"
-  //   di setiap jawaban.
-    
-  //   Jangan pernah tanya
-  //   "siapa nama kamu" lagi kalau
-  //   sudah ada di memory.
-    
-  //   MEMORY USER:
-
-  //   ${memoryText}`
-  // });
-
-  
   for (const message of cleanMessages) {
-
-    // Jika content string
     if (typeof message.content === "string") {
-
       const documentInstruction =
         message.role === "user"
           ? buildDocumentInstruction(message.content)
           : null;
 
       if (documentInstruction) {
-        result.push({
-          role: "system",
-          content: documentInstruction
-        });
+        result.push({ role: "system", content: documentInstruction });
       }
 
-      result.push({
-        role: message.role,
-        content: message.content
-      });
-
+      result.push({ role: message.role, content: message.content });
     } else {
-
-      // Content array hanya boleh dipakai
-      // untuk pesan terakhir yang sedang
-      // mengirim gambar ke Vision model.
+      // Content array hanya boleh dipakai untuk pesan terakhir yang
+      // sedang mengirim gambar ke Vision model.
       if (
         useVision &&
         message === cleanMessages[cleanMessages.length - 1] &&
         Array.isArray(message.content)
       ) {
-
-        result.push({
-          role: message.role,
-          content: message.content
-        });
-
+        result.push({ role: message.role, content: message.content });
       } else {
-
-        // Gambar dari chat sebelumnya
-        // diubah menjadi text agar tidak
+        // Gambar dari chat sebelumnya diubah jadi text agar tidak
         // error di model text.
         result.push({
           role: message.role,
-          content: normalizeMessageContent(
-            message.content
-          )
+          content: normalizeMessageContent(message.content)
         });
-
       }
     }
   }
@@ -1160,71 +486,26 @@ result.push({
   return result;
 }
 
-
-
 /* =========================================================
    MAIN HANDLER
 ========================================================= */
 
-export default async function handler(
-  req,
-  res
-) {
-
-  /*
-   * Hanya POST
-   */
-
-  if (
-    req.method !== "POST"
-  ) {
-
-    return res
-      .status(405)
-      .json({
-
-        error:
-          "Method not allowed"
-
-      });
-
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
-
-
 
   /* =======================================================
      AUTH HEADER
   ======================================================= */
 
-  const authHeader =
-    req.headers.authorization ||
-    "";
+  const authHeader = req.headers.authorization || "";
 
-
-  if (
-    !authHeader.startsWith(
-      "Bearer "
-    )
-  ) {
-
-    return res
-      .status(401)
-      .json({
-
-        error:
-          "Belum login"
-
-      });
-
+  if (!authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Belum login" });
   }
 
-
-  const idToken =
-    authHeader
-      .substring(7)
-      .trim();
-
-
+  const idToken = authHeader.substring(7).trim();
 
   /* =======================================================
      VERIFY GOOGLE / MAGIC LINK
@@ -1232,293 +513,121 @@ export default async function handler(
 
   let user;
 
-
   try {
-
-    user =
-      await verifyAuthToken(
-        idToken
-      );
-
+    user = await verifyAuthToken(idToken);
   } catch (err) {
-
-    console.error(
-      "Auth error:",
-      err
-    );
-
+    console.error("Auth error:", err);
 
     return res
       .status(401)
-      .json({
-
-        error:
-          "Sesi login tidak valid atau sudah expired"
-
-      });
-
+      .json({ error: "Sesi login tidak valid atau sudah expired" });
   }
 
-
-  const userId =
-    user.userId;
-
-
+  const userId = user.userId;
 
   console.log(
     `User login: ${user.email || userId} | provider=${user.provider}`
   );
 
-
-
   /* =======================================================
      REQUEST BODY
   ======================================================= */
 
-  const {
-    messages,
-    conversationId,
-    projectId
-  } = req.body || {};
+  const { messages, conversationId, projectId } = req.body || {};
 
-
-  if (
-    !Array.isArray(messages) ||
-    messages.length === 0
-  ) {
-
-    return res
-      .status(400)
-      .json({
-
-        error:
-          "Pesan kosong"
-
-      });
-
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: "Pesan kosong" });
   }
 
+  const clean = cleanMessages(messages);
 
-  const clean =
-    cleanMessages(
-      messages
-    );
-
-
-  const lastUserMessage =
-    [
-      ...clean
-    ]
-      .reverse()
-      .find(
-        (message) =>
-          message.role === "user"
-      );
-
-
+  const lastUserMessage = [...clean]
+    .reverse()
+    .find((message) => message.role === "user");
 
   /* =======================================================
      CONVERSATION
   ======================================================= */
 
-  let convId =
-    conversationId
-      ? Number(conversationId)
-      : null;
-
+  let convId = conversationId ? Number(conversationId) : null;
 
   if (!convId) {
+    const title = lastUserMessage
+      ? makeTitleFromMessage(
+          typeof lastUserMessage.content === "string"
+            ? lastUserMessage.content
+            : "Analisis gambar"
+        )
+      : "Percakapan baru";
 
-    const title =
-      lastUserMessage
+    const conv = await createConversation(userId, title, projectId || null);
 
-        ? makeTitleFromMessage(
-
-            typeof lastUserMessage.content ===
-              "string"
-
-              ? lastUserMessage.content
-
-              : "Analisis gambar"
-
-          )
-
-        : "Percakapan baru";
-
-
-    const conv =
-      await createConversation(
-        userId,
-        title,
-        projectId || null   // tambahkan ini
-      );
-
-
-    convId =
-      conv.id;
-
+    convId = conv.id;
   }
-
-
 
   /* =======================================================
      MEMORY
   ======================================================= */
 
-  let memoryText =
-    "Belum ada memory tersimpan.";
-
+  let memoryText = "Belum ada memory tersimpan.";
 
   try {
+    const memories = await getMemories(userId);
 
-    const memories =
-      await getMemories(
-        userId
-      );
+    memoryText = formatMemoriesForPrompt(memories);
 
-
-    memoryText =
-      formatMemoriesForPrompt(
-        memories
-      );
-
-
-    console.log(
-      `Memory ditemukan: ${memories.length} item`
-    );
-
+    console.log(`Memory ditemukan: ${memories.length} item`);
   } catch (err) {
-
-    console.error(
-      "Gagal ambil memories:",
-      err
-    );
-
+    console.error("Gagal ambil memories:", err);
   }
 
+  if (memoryText.length > MAX_MEMORY_CHARS_IN_PROMPT) {
+    memoryText = memoryText.slice(0, MAX_MEMORY_CHARS_IN_PROMPT);
 
+    const lastNewLine = memoryText.lastIndexOf("\n");
 
-  if (
-    memoryText.length >
-    MAX_MEMORY_CHARS_IN_PROMPT
-  ) {
-
-    memoryText =
-      memoryText.slice(
-        0,
-        MAX_MEMORY_CHARS_IN_PROMPT
-      );
-
-
-    const lastNewLine =
-      memoryText.lastIndexOf(
-        "\n"
-      );
-
-
-    if (
-      lastNewLine > 0
-    ) {
-
-      memoryText =
-        memoryText.substring(
-          0,
-          lastNewLine
-        );
-
+    if (lastNewLine > 0) {
+      memoryText = memoryText.substring(0, lastNewLine);
     }
 
-
-    memoryText +=
-      "\n[Memory lama dipotong]";
-
+    memoryText += "\n[Memory lama dipotong]";
   }
 
-
-  console.log(
-    "Memory dikirim ke AI:",
-    memoryText
-  );
-
-
+  console.log("Memory dikirim ke AI:", memoryText);
 
   /* =======================================================
      VISION
   ======================================================= */
 
   const useVision =
-    !!lastUserMessage &&
-    messageHasImage(
-      lastUserMessage
-    );
+    !!lastUserMessage && messageHasImage(lastUserMessage);
 
+  const trimmedForModel = trimMessagesForModel(clean);
 
-  const trimmedForModel =
-    trimMessagesForModel(
-      clean
-    );
-
-
-  let groqMessages =
-    buildGroqMessages(
-      trimmedForModel,
-      memoryText,
-      useVision
-    );
-
+  let groqMessages = buildGroqMessages(trimmedForModel, memoryText, useVision);
 
   if (useVision) {
-
-    groqMessages =
-      capImagesPerRequest(
-        groqMessages
-      );
-
+    groqMessages = capImagesPerRequest(groqMessages);
   }
 
+  const modelToUse = useVision ? VISION_MODEL : MODEL;
 
-  const modelToUse =
-    useVision
-      ? VISION_MODEL
-      : MODEL;
-
-  // const maxOutputTokens = 800;
-  const maxOutputTokens =
-    useVision
-      ? 1000
-      : 800;
-  // const maxOutputTokens =
-  // useVision ? 800 : 800;
+  const maxOutputTokens = useVision ? 1000 : 800;
 
   /* =======================================================
      SAVE USER MESSAGE
   ======================================================= */
 
-  if (
-    lastUserMessage
-  ) {
-
+  if (lastUserMessage) {
     const savedContent =
-      typeof lastUserMessage.content ===
-        "string"
-
+      typeof lastUserMessage.content === "string"
         ? lastUserMessage.content
-
         : "[Lampiran gambar]";
 
-
-    saveChatMessage(
-      userId,
-      convId,
-      "user",
-      savedContent
-    ).catch(
+    saveChatMessage(userId, convId, "user", savedContent).catch(
       console.error
     );
-
   }
-
-
 
   /* =======================================================
      GROQ
@@ -1526,86 +635,36 @@ export default async function handler(
 
   let upstream;
 
-
   try {
-
-    upstream =
-      await callGroq(
-        groqMessages,
-        modelToUse,
-        maxOutputTokens
-      );
-
+    upstream = await callGroq(groqMessages, modelToUse, maxOutputTokens);
   } catch (err) {
+    console.error("Groq error:", err);
 
-    console.error(
-      "Groq error:",
-      err
-    );
-
-
-    return res
-      .status(502)
-      .json({
-
-        error:
-          "Tidak dapat menghubungi AI"
-
-      });
-
+    return res.status(502).json({ error: "Tidak dapat menghubungi AI" });
   }
-
 
   if (!upstream.ok || !upstream.body) {
     const errorText = await upstream.text().catch(() => "");
-  
+
     console.error("GROQ ERROR:", {
       status: upstream.status,
       body: errorText
     });
-  
-    // Pertahankan 429 sebagai rate limit
+
+    // Pertahankan 429 sebagai rate limit.
     if (upstream.status === 429) {
-      return res.status(429).json({
-        error: "Limit Groq sudah tercapai. Silakan coba lagi nanti."
-      });
+      return res
+        .status(429)
+        .json({ error: "Limit Groq sudah tercapai. Silakan coba lagi nanti." });
     }
-  
-    // Semua error dari Groq jangan diteruskan sebagai 401
-    // agar frontend tidak menganggap sesi login habis.
+
+    // Semua error dari Groq jangan diteruskan sebagai 401 agar
+    // frontend tidak menganggap sesi login habis.
     return res.status(502).json({
       error: errorText || "Gagal mendapatkan respons dari AI.",
       code: "GROQ_ERROR"
     });
   }
-  // if (
-  //   !upstream.ok ||
-  //   !upstream.body
-  // ) {
-
-  //   const errorText =
-  //     await upstream
-  //       .text()
-  //       .catch(
-  //         () => ""
-  //       );
-
-
-  //   return res
-  //     .status(
-  //       upstream.status
-  //     )
-  //     .json({
-
-  //       error:
-  //         errorText ||
-  //         "Gagal respons AI"
-
-  //     });
-
-  // }
-
-
 
   /* =======================================================
      SSE
@@ -1613,237 +672,94 @@ export default async function handler(
 
   res.status(200);
 
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Conversation-Id", String(convId));
 
-  res.setHeader(
-    "Content-Type",
-    "text/event-stream; charset=utf-8"
-  );
-
-
-  res.setHeader(
-    "Cache-Control",
-    "no-cache"
-  );
-
-
-  res.setHeader(
-    "Connection",
-    "keep-alive"
-  );
-
-
-  res.setHeader(
-    "X-Conversation-Id",
-    String(convId)
-  );
-
-
-  if (
-    res.flushHeaders
-  ) {
-
+  if (res.flushHeaders) {
     res.flushHeaders();
-
   }
 
-
-
-  const reader =
-    upstream.body.getReader();
-
-
-  const decoder =
-    new TextDecoder();
-
+  const reader = upstream.body.getReader();
+  const decoder = new TextDecoder();
 
   let sseBuffer = "";
-
   let fullReply = "";
-
-
 
   /* =======================================================
      PROCESS SSE
   ======================================================= */
 
-  function processSSEChunk(
-    chunkText
-  ) {
+  function processSSEChunk(chunkText) {
+    sseBuffer += chunkText;
 
-    sseBuffer +=
-      chunkText;
+    const lines = sseBuffer.split("\n");
 
+    sseBuffer = lines.pop() ?? "";
 
-    const lines =
-      sseBuffer.split(
-        "\n"
-      );
+    for (const line of lines) {
+      const trimmed = line.trim();
 
+      if (!trimmed.startsWith("data:")) continue;
 
-    sseBuffer =
-      lines.pop() ?? "";
+      const payload = trimmed.slice(5).trim();
 
-
-    for (
-      const line of lines
-    ) {
-
-      const trimmed =
-        line.trim();
-
-
-      if (
-        !trimmed.startsWith(
-          "data:"
-        )
-      ) {
-        continue;
-      }
-
-
-      const payload =
-        trimmed
-          .slice(5)
-          .trim();
-
-
-      if (
-        payload ===
-        "[DONE]"
-      ) {
-        continue;
-      }
-
+      if (payload === "[DONE]") continue;
 
       try {
+        const json = JSON.parse(payload);
 
-        const json =
-          JSON.parse(
-            payload
-          );
+        const delta = json?.choices?.[0]?.delta?.content;
 
-
-        const delta =
-          json
-            ?.choices?.[0]
-            ?.delta?.content;
-
-
-        if (
-          typeof delta ===
-          "string"
-        ) {
-
-          fullReply +=
-            delta;
-
+        if (typeof delta === "string") {
+          fullReply += delta;
         }
-
       } catch {
-
-        // Abaikan SSE
+        // Abaikan SSE yang tidak valid.
       }
-
     }
-
   }
-
-
 
   /* =======================================================
      STREAM RESPONSE
   ======================================================= */
 
   try {
-
     while (true) {
+      const { done, value } = await reader.read();
 
-      const {
-        done,
-        value
-      } =
-        await reader.read();
+      if (done) break;
 
+      res.write(value);
 
-      if (done) {
-        break;
-      }
-
-
-      res.write(
-        value
-      );
-
-
-      processSSEChunk(
-        decoder.decode(
-          value,
-          {
-            stream: true
-          }
-        )
-      );
-
+      processSSEChunk(decoder.decode(value, { stream: true }));
     }
-
   } catch (err) {
-
-    console.error(
-      "Streaming error:",
-      err
-    );
-
+    console.error("Streaming error:", err);
   }
-
-
 
   /* =======================================================
      SAVE ASSISTANT
   ======================================================= */
 
-  if (
-    fullReply.trim()
-  ) {
-
-    await saveChatMessage(
-      userId,
-      convId,
-      "assistant",
-      fullReply.trim()
-    );
-
+  if (fullReply.trim()) {
+    await saveChatMessage(userId, convId, "assistant", fullReply.trim());
   }
-
-
 
   /* =======================================================
      EXTRACT MEMORY
   ======================================================= */
 
-  if (
-    lastUserMessage &&
-    typeof lastUserMessage.content ===
-      "string"
-  ) {
+  if (lastUserMessage && typeof lastUserMessage.content === "string") {
+    console.log("Mulai ekstrak memory...");
 
-    console.log(
-      "Mulai ekstrak memory..."
-    );
-
-
-    await extractAndSaveFacts(
-      userId,
-      lastUserMessage.content
-    );
-
+    await extractAndSaveFacts(userId, lastUserMessage.content);
   }
-
-
 
   /* =======================================================
      END
   ======================================================= */
 
   res.end();
-
 }
