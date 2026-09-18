@@ -25,7 +25,7 @@ const GROQ_API_KEYS = [
 // ROTASI KEY
 // =========================================================
 
-let nextKeyIndex = 0;
+// let nextKeyIndex = 0;
 
 const invalidKeyIndices = new Set();
 
@@ -231,25 +231,64 @@ function parseRetryAfterSeconds(
 // GROQ
 // =========================================================
 
-// Pilih key berikutnya yang:
+// // Pilih key berikutnya yang:
+// // - belum dicoba pada request ini
+// // - tidak ditandai invalid
+// function pickKeyIndex(triedIndices) {
+//   const total = GROQ_API_KEYS.length;
+
+//   for (let step = 0; step < total; step++) {
+//     const idx =
+//       (nextKeyIndex + step) % total;
+
+//     if (
+//       !triedIndices.has(idx) &&
+//       !invalidKeyIndices.has(idx)
+//     ) {
+//       return idx;
+//     }
+//   }
+
+//   return null;
+// }
+
+// Pilih key SECARA ACAK dari yang:
 // - belum dicoba pada request ini
 // - tidak ditandai invalid
+//
+// Sebelumnya pakai urutan tetap (nextKeyIndex) yang naik
+// setiap request sukses. Masalahnya: di lingkungan serverless
+// (Vercel), tiap request bisa ditangani instance/container
+// berbeda-beda, dan nextKeyIndex (variabel di memori) RESET
+// setiap kali ada cold start. Akibatnya rotasi jadi tidak
+// konsisten — key yang sama bisa kepanggil berkali-kali
+// berturut-turut walau baru saja gagal, seperti yang kelihatan
+// di log Groq (KODE2 kena 429 3x beruntun).
+//
+// Pemilihan acak tidak butuh state yang harus "diingat" antar
+// request, jadi tidak terpengaruh cold start sama sekali —
+// dalam jangka panjang, beban tetap tersebar merata ke semua
+// key karena setiap key punya peluang sama untuk terpilih.
 function pickKeyIndex(triedIndices) {
-  const total = GROQ_API_KEYS.length;
+  const availableIndices = [];
 
-  for (let step = 0; step < total; step++) {
-    const idx =
-      (nextKeyIndex + step) % total;
-
+  for (let idx = 0; idx < GROQ_API_KEYS.length; idx++) {
     if (
       !triedIndices.has(idx) &&
       !invalidKeyIndices.has(idx)
     ) {
-      return idx;
+      availableIndices.push(idx);
     }
   }
 
-  return null;
+  if (availableIndices.length === 0) {
+    return null;
+  }
+
+  const randomPick =
+    Math.floor(Math.random() * availableIndices.length);
+
+  return availableIndices[randomPick];
 }
 
 // =========================================================
@@ -460,11 +499,15 @@ async function callGroq(
   // SUKSES
   // =======================================================
 
-  if (response.ok) {
-    nextKeyIndex =
-      (keyIndex + 1) %
-      GROQ_API_KEYS.length;
+  // if (response.ok) {
+  //   nextKeyIndex =
+  //     (keyIndex + 1) %
+  //     GROQ_API_KEYS.length;
 
+  //   return response;
+  // }
+
+  if (response.ok) {
     return response;
   }
 
