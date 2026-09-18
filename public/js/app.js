@@ -4775,6 +4775,77 @@ function createTypewriter(
 
 }
 
+// =========================================================
+// COUNTDOWN RATE LIMIT (429)
+// =========================================================
+// Menampilkan hitung mundur ke user saat kena rate limit,
+// alih-alih pesan statis tanpa info waktu. Tombol kirim &
+// input ikut dikunci selama countdown supaya user tidak
+// spam klik — spam klik saat masih kena limit cuma bikin
+// request tambahan gagal lagi, sia-sia.
+
+let rateLimitCountdownTimer = null;
+
+function startRetryCountdown(aiBubble, totalSeconds){
+
+  if(rateLimitCountdownTimer){
+    clearInterval(rateLimitCountdownTimer);
+    rateLimitCountdownTimer = null;
+  }
+
+  let remaining =
+    Math.max(0, Math.ceil(totalSeconds));
+
+  function render(){
+
+    if(remaining > 0){
+
+      aiBubble.textContent =
+        `Limit chat sedang habis. Coba lagi dalam ${remaining} detik...`;
+
+    }else{
+
+      aiBubble.textContent =
+        'Limit chat sudah pulih. Silakan kirim pesan lagi.';
+
+    }
+
+  }
+
+  sendBtn.disabled = true;
+  input.disabled = true;
+
+  render();
+
+  rateLimitCountdownTimer =
+    setInterval(() => {
+
+      remaining -= 1;
+
+      if(remaining <= 0){
+
+        clearInterval(
+          rateLimitCountdownTimer
+        );
+
+        rateLimitCountdownTimer = null;
+
+        render();
+
+        sendBtn.disabled = false;
+        input.disabled = false;
+
+        updateSendButton();
+
+      }else{
+
+        render();
+
+      }
+
+    }, 1000);
+
+}
 
 // =========================================================
 // SEND MESSAGE
@@ -5038,7 +5109,7 @@ async function sendMessage(){
 
     }
 
-    // ============================================================
+        // ============================================================
     // CHAT LIMIT / RATE LIMIT
     // ============================================================
     if(response.status === 429){
@@ -5046,12 +5117,41 @@ async function sendMessage(){
       stopAIThinking(
         aiBubble
       );
-    
-      aiBubble.textContent =
-        'Limit Chat sudah habis. Silakan coba lagi beberapa saat lagi.';
-    
-      sendBtn.disabled = false;
-    
+
+      let retryAfter = null;
+
+      try{
+
+        const data =
+          await response.json();
+
+        if(
+          typeof data.retryAfter === 'number' &&
+          data.retryAfter > 0
+        ){
+          retryAfter = data.retryAfter;
+        }
+
+      }catch(e){
+        // Body tidak valid JSON, lanjut tanpa retryAfter.
+      }
+
+      if(retryAfter !== null){
+
+        startRetryCountdown(
+          aiBubble,
+          retryAfter
+        );
+
+      }else{
+
+        aiBubble.textContent =
+          'Limit Chat sudah habis. Silakan coba lagi beberapa saat lagi.';
+
+        sendBtn.disabled = false;
+
+      }
+
       return;
     }
 
@@ -5360,14 +5460,16 @@ async function sendMessage(){
     aiBubble.textContent =
       'Tidak bisa terhubung ke AI. Periksa koneksi lalu coba lagi.';
 
-  }finally{
+    }finally{
 
-    sendBtn.disabled =
-      false;
+    // Jangan unlock tombol kalau countdown rate limit
+    // sedang jalan — biar countdown yang mengatur kapan
+    // tombol kirim aktif lagi, bukan finally ini.
+    if(!rateLimitCountdownTimer){
+      sendBtn.disabled = false;
+    }
 
   }
-
-}
 
 
 // =========================================================
