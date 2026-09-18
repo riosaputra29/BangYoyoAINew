@@ -1469,38 +1469,33 @@ fileInput.addEventListener(
       new FileReader();
 
 
-    if(isImage){
+        if(isImage){
 
-      reader.onload = () => {
+      compressImageFile(file)
+        .then((compressedDataUrl) => {
 
-        pendingAttachment = {
+          pendingAttachment = {
+            kind: 'image',
+            name: file.name,
+            size: file.size,
+            dataUrl: compressedDataUrl
+          };
 
-          kind:'image',
+          showAttachmentPreview();
 
-          name:file.name,
+        })
+        .catch((err) => {
 
-          size:file.size,
-
-          dataUrl:reader.result
-
-        };
-
-
-        showAttachmentPreview();
-
-      };
-
-
-      reader.onerror =
-        () =>
-          alert(
-            'Gagal membaca gambar.'
+          console.error(
+            'Gagal kompres gambar:',
+            err
           );
 
+          alert(
+            'Gagal memproses gambar.'
+          );
 
-      reader.readAsDataURL(
-        file
-      );
+        });
 
     }else if(isPdf){
 
