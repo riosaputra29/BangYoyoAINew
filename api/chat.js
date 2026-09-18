@@ -38,9 +38,12 @@ const MAX_IMAGES_PER_REQUEST = 5;
 
 // TOKEN SAVING
 const MAX_HISTORY_MESSAGES_FOR_MODEL = 4;
-const MAX_DOCS_KEPT_FULL = 1;
 const MAX_IMAGE_MSGS_KEPT_FULL = 1;
 const MAX_MEMORY_CHARS_IN_PROMPT = 800;
+// Catatan: MAX_DOCS_KEPT_FULL sudah tidak dipakai lagi.
+// Dokumen sekarang cuma utuh di pesan TERAKHIR (lihat
+// trimMessagesForModel) — tidak ada lagi toleransi
+// "bertahan beberapa giliran".
 
 const googleClient =
   new OAuth2Client(GOOGLE_CLIENT_ID);
@@ -422,7 +425,7 @@ async function callGroq(
     // -----------------------------------------------------
 
     if (
-      nextTried.size <
+      nextTried.size 
       GROQ_API_KEYS.length
     ) {
       // Tidak sleep.
@@ -630,15 +633,27 @@ function trimMessagesForModel(
     }
   );
 
+  // =======================================================
+  // DOKUMEN: SEKALI PAKAI, TIDAK BERULANG
+  // =======================================================
+  // Sebelumnya dokumen bisa "bertahan" sampai beberapa
+  // giliran chat (selama masih termasuk 1 dokumen paling
+  // baru), sehingga isinya bisa terkirim ulang ke Groq
+  // berkali-kali dan menguras kuota token harian (TPD).
+  //
+  // Sekarang: dokumen HANYA dikirim utuh kalau dia berada
+  // di pesan PALING TERAKHIR (giliran chat yang sedang
+  // berjalan). Begitu masuk giliran berikutnya, langsung
+  // diganti placeholder — tidak ada toleransi sama sekali.
+
+  const lastMessageIndex =
+    messages.length - 1;
+
   const docIndicesToStrip =
     new Set(
-      docIndices.slice(
-        0,
-        Math.max(
-          0,
-          docIndices.length -
-            MAX_DOCS_KEPT_FULL
-        )
+      docIndices.filter(
+        (index) =>
+          index !== lastMessageIndex
       )
     );
 
@@ -1310,20 +1325,20 @@ export default async function handler(
     );
   }
 
-          // =======================================================
-    // SAVE ASSISTANT + EXTRACT MEMORY
-    // =======================================================
-  
-    // SAVE ASSISTANT + EXTRACT MEMORY — jalan paralel, tidak menahan response
-    if (fullReply.trim()) {
-      saveChatMessage(userId, convId, "assistant", fullReply.trim())
-        .catch((err) => console.error("Gagal simpan pesan assistant:", err));
-    }
-  
-    if (lastUserMessage && typeof lastUserMessage.content === "string") {
-      extractAndSaveFacts(userId, lastUserMessage.content)
-        .catch((err) => console.error("Gagal ekstrak memory:", err));
-    }
-  
-    res.end();
+  // =======================================================
+  // SAVE ASSISTANT + EXTRACT MEMORY
+  // =======================================================
+
+  // SAVE ASSISTANT + EXTRACT MEMORY — jalan paralel, tidak menahan response
+  if (fullReply.trim()) {
+    saveChatMessage(userId, convId, "assistant", fullReply.trim())
+      .catch((err) => console.error("Gagal simpan pesan assistant:", err));
   }
+
+  if (lastUserMessage && typeof lastUserMessage.content === "string") {
+    extractAndSaveFacts(userId, lastUserMessage.content)
+      .catch((err) => console.error("Gagal ekstrak memory:", err));
+  }
+
+  res.end();
+}
