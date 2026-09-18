@@ -642,7 +642,7 @@ export default async function handler(req, res) {
 
   const modelToUse = useVision ? VISION_MODEL : MODEL;
 
-  const maxOutputTokens = useVision ? 1000 : 800;
+  const maxOutputTokens = useVision ? 1000 : 1200;
 
   /* =======================================================
      SAVE USER MESSAGE
