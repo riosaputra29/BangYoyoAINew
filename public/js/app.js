@@ -2110,9 +2110,60 @@ function renderMarkdown(raw){
 
   const codeBlocks = [];
 
+  // Pagar pembuka/penutup HARUS berdiri sendiri di satu baris
+  // (boleh diawali spasi/tab, dan setelah bahasa boleh ada
+  // spasi trailing) — ini mencegah tanda ``` yang nyasar di
+  // tengah kalimat/komentar ikut dianggap sebagai fence, yang
+  // sebelumnya bisa merusak pairing semua blok kode sesudahnya.
   source =
     source.replace(
-      /```([a-zA-Z0-9_+#.-]*)[ \t]*\n?([\s\S]*?)```/g,
+      /^[ \t]*```([a-zA-Z0-9_+#.-]*)[ \t]*\r?\n([\s\S]*?)^[ \t]*```[ \t]*$/gm,
+
+      (
+        match,
+        lang,
+        code
+      ) => {
+
+        const index =
+          codeBlocks.length;
+
+        codeBlocks.push({
+          lang:
+            (lang || '')
+              .trim()
+              .toLowerCase(),
+
+          code:
+            code.replace(
+              /\n$/,
+              ''
+            )
+        });
+
+        return (
+          '\n' +
+          '\u0000CODEBLOCK' +
+          index +
+          '\u0000' +
+          '\n'
+        );
+      }
+    );
+
+
+  // =======================================================
+  // FALLBACK: PAGAR PEMBUKA TANPA PENUTUP
+  // =======================================================
+  // Kalau setelah ekstraksi di atas masih ada baris ``` yang
+  // "nyasar" (pembuka tanpa pasangan penutup — misal AI lupa
+  // menutup, atau responsnya kepotong), jangan biarkan sisa
+  // teksnya tampil plain. Anggap semua sisa teks setelah
+  // pagar itu sebagai satu blok kode yang belum selesai.
+
+  source =
+    source.replace(
+      /^[ \t]*```([a-zA-Z0-9_+#.-]*)[ \t]*\r?\n([\s\S]*)$/m,
 
       (
         match,
