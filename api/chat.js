@@ -1310,20 +1310,23 @@ export default async function handler(
     );
   }
 
-  // =======================================================
+    // =======================================================
   // SAVE ASSISTANT
   // =======================================================
 
-  if (
-    fullReply.trim()
-  ) {
-    await saveChatMessage(
-      userId,
-      convId,
-      "assistant",
-      fullReply.trim()
-    );
+  if (fullReply.trim()) {
+    await saveChatMessage(...)
   }
+
+  // =======================================================
+  // EXTRACT MEMORY
+  // =======================================================
+
+  if (lastUserMessage && ...) {
+    await extractAndSaveFacts(...)
+  }
+
+  res.end();
 
   // =======================================================
   // EXTRACT MEMORY
