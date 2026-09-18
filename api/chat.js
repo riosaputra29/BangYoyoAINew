@@ -21,17 +21,19 @@ const GROQ_API_KEYS = [
   process.env.GROQ_KEY_4
 ].filter(Boolean);
 
-// FIX: sebelumnya di-hardcode ke 2, artinya key 1 & 2 tidak pernah dipakai
-// duluan. Mulai dari 0 supaya rotasi key jalan dari awal.
-let currentKeyIndex = 0;
+// ROTASI KEY — round-robin murni:
+// - nextKeyIndex maju otomatis setiap request SUKSES, jadi ke-4 key
+//   kepakai merata seiring waktu (bukan selalu mulai dari key yang sama).
+// - invalidKeyIndices menandai key yang pasti mati (401), supaya tidak
+//   dicoba lagi di request-request berikutnya (hemat retry, tidak error).
+let nextKeyIndex = 0;
+const invalidKeyIndices = new Set();
 
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 const VISION_MODEL = "qwen/qwen3.8-27b";
 
 const MAX_IMAGES_PER_REQUEST = 5;
-
-const MAX_GROQ_RETRIES = Math.max(GROQ_API_KEYS.length, 1);
 
 // TOKEN SAVING
 const MAX_HISTORY_MESSAGES_FOR_MODEL = 4;
@@ -160,18 +162,41 @@ function sleep(ms) {
    GROQ
 ========================================================= */
 
-function callGroq(messages, modelId, maxTokens, attempt = 0) {
+// Pilih key berikutnya yang belum dicoba di request ini dan belum
+// ditandai invalid. Mulai dari nextKeyIndex supaya rotasi merata
+// antar-request, lalu putar sampai ketemu kandidat yang valid.
+function pickKeyIndex(triedIndices) {
+  const total = GROQ_API_KEYS.length;
+
+  for (let step = 0; step < total; step++) {
+    const idx = (nextKeyIndex + step) % total;
+
+    if (!triedIndices.has(idx) && !invalidKeyIndices.has(idx)) {
+      return idx;
+    }
+  }
+
+  return null; // semua key sudah dicoba atau invalid
+}
+
+function callGroq(messages, modelId, maxTokens, triedIndices = new Set()) {
   if (GROQ_API_KEYS.length === 0) {
     return Promise.reject(
       new Error("GROQ API key belum dikonfigurasi.")
     );
   }
 
-  const apiKey = GROQ_API_KEYS[currentKeyIndex];
+  const keyIndex = pickKeyIndex(triedIndices);
 
-  console.log(
-    `Chat pakai Groq key ${currentKeyIndex + 1}/${GROQ_API_KEYS.length}`
-  );
+  if (keyIndex === null) {
+    return Promise.reject(
+      new Error("Semua Groq API key gagal, invalid, atau kena rate limit.")
+    );
+  }
+
+  const apiKey = GROQ_API_KEYS[keyIndex];
+
+  console.log(`Chat pakai Groq key ${keyIndex + 1}/${GROQ_API_KEYS.length}`);
 
   return fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -188,30 +213,31 @@ function callGroq(messages, modelId, maxTokens, attempt = 0) {
     })
   }).then(async (response) => {
     /*
-     * 401 = API KEY INVALID
-     * 429 = RATE LIMIT
-     * Keduanya pindah ke key berikutnya, kecuali rate limit
-     * yang disebabkan oleh request terlalu besar (bukan salah key).
+     * 401 = API KEY INVALID -> tandai permanen, jangan dipakai lagi.
+     * 429 = RATE LIMIT -> coba key lain, kecuali rate limit yang
+     * disebabkan oleh request terlalu besar (bukan salah key).
      */
 
     if (response.status === 401) {
-      console.log(`Groq key ${currentKeyIndex + 1} invalid.`);
+      console.log(`Groq key ${keyIndex + 1} invalid, ditandai skip.`);
 
-      if (attempt + 1 >= MAX_GROQ_RETRIES) {
+      invalidKeyIndices.add(keyIndex);
+
+      const nextTried = new Set(triedIndices).add(keyIndex);
+
+      if (nextTried.size >= GROQ_API_KEYS.length) {
         return response;
       }
 
-      currentKeyIndex = (currentKeyIndex + 1) % GROQ_API_KEYS.length;
+      await sleep(300 * nextTried.size);
 
-      await sleep(300 * (attempt + 1));
-
-      return callGroq(messages, modelId, maxTokens, attempt + 1);
+      return callGroq(messages, modelId, maxTokens, nextTried);
     }
 
     if (response.status === 429) {
       const errorText = await response.clone().text().catch(() => "");
 
-      // Request terlalu besar: jangan pindah API key.
+      // Request terlalu besar: jangan pindah API key, key ini baik-baik saja.
       if (
         errorText.includes("output tokens per minute") ||
         errorText.includes("Requested")
@@ -220,19 +246,23 @@ function callGroq(messages, modelId, maxTokens, attempt = 0) {
         return response;
       }
 
-      // Rate limit biasa -> coba key berikutnya.
-      console.log(`Groq key ${currentKeyIndex + 1} terkena rate limit.`);
+      // Rate limit biasa -> coba key lain.
+      console.log(`Groq key ${keyIndex + 1} terkena rate limit.`);
 
-      if (attempt + 1 >= MAX_GROQ_RETRIES) {
+      const nextTried = new Set(triedIndices).add(keyIndex);
+
+      if (nextTried.size >= GROQ_API_KEYS.length) {
         return response;
       }
 
-      currentKeyIndex = (currentKeyIndex + 1) % GROQ_API_KEYS.length;
+      await sleep(300 * nextTried.size);
 
-      await sleep(300 * (attempt + 1));
-
-      return callGroq(messages, modelId, maxTokens, attempt + 1);
+      return callGroq(messages, modelId, maxTokens, nextTried);
     }
+
+    // Sukses -> majukan titik mulai rotasi untuk request berikutnya,
+    // supaya keempat key kepakai merata dari waktu ke waktu.
+    nextKeyIndex = (keyIndex + 1) % GROQ_API_KEYS.length;
 
     return response;
   });
